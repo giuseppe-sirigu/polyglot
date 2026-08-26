@@ -33,7 +33,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalPrompt } from "./ApprovalPrompt.js";
 import { AskUserQuestionPrompt } from "./AskUserQuestionPrompt.js";
 import { AutoUpdateConsentPrompt } from "./AutoUpdateConsentPrompt.js";
-import { Header } from "./Header.js";
+import { HEADER_LINE_COUNT, Header } from "./Header.js";
 import { InputBar } from "./InputBar.js";
 import { PlanApprovalPrompt } from "./PlanApprovalPrompt.js";
 import { StatusBar } from "./StatusBar.js";
@@ -361,8 +361,17 @@ export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
     setShowUpdateConsent(false);
   }
 
+  // Only anchor the input to the bottom of a fresh, empty terminal (like Claude Code's welcome
+  // screen) — once any transcript content exists, Static output is no longer accounted for in
+  // Ink's own layout height, so keeping this on would make the "filled" area grow unbounded
+  // and push the transcript off-screen.
+  const fillHeight =
+    items.length === 0 && stdout?.rows
+      ? Math.max(0, stdout.rows - HEADER_LINE_COUNT - 1)
+      : undefined;
+
   return (
-    <Box flexDirection="column" minHeight={stdout?.rows}>
+    <Box flexDirection="column" minHeight={fillHeight}>
       <Static items={staticEntries}>
         {(entry) =>
           entry.kind === "header" ? (
@@ -387,10 +396,7 @@ export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
         </Box>
       ) : null}
 
-      {/* Pushes the prompt/input area to the bottom of the terminal while the transcript is
-          short (like Claude Code); once printed content already fills the screen this
-          collapses to zero and everything scrolls normally. */}
-      <Box flexGrow={1} />
+      {fillHeight !== undefined ? <Box flexGrow={1} /> : null}
 
       {approvalRequest ? (
         <ApprovalPrompt request={approvalRequest} onRespond={respondApproval} />

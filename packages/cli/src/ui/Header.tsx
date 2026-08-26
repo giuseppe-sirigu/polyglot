@@ -1,6 +1,11 @@
 import { Box, Text } from "ink";
 import { theme } from "./theme.js";
 
+/** Rendered line count of <Header> below, at its normal (non-wrapping) width — used by App.tsx
+ * to size the fill-to-bottom spacer on a fresh session, since Static content isn't counted in
+ * Ink's own layout height. Keep in sync if Header's structure changes. */
+export const HEADER_LINE_COUNT = 9;
+
 export interface HeaderProps {
   provider: string;
   model: string;
