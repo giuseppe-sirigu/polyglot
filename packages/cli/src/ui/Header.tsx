@@ -5,21 +5,27 @@ export interface HeaderProps {
   provider: string;
   model: string;
   sessionId: string;
+  version: string;
+  cwd: string;
 }
 
-export function Header({ provider, model, sessionId }: HeaderProps) {
+export function Header({ provider, model, sessionId, version, cwd }: HeaderProps) {
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Box>
+      <Box borderStyle="round" borderColor={theme.signal} paddingX={2}>
         <Text color={theme.signal} bold>
-          ◈ polyglot
-        </Text>
-        <Text dimColor>
-          {" "}
-          — {provider} / {model}
+          ◈ POLYGLOT ◈
         </Text>
       </Box>
-      <Text dimColor>session {sessionId.slice(0, 8)}</Text>
+      <Text dimColor> the model-agnostic coding agent · v{version}</Text>
+      <Box marginTop={1} flexDirection="column">
+        <Text dimColor>
+          {" "}
+          {provider} / {model}
+        </Text>
+        <Text dimColor> {cwd}</Text>
+        <Text dimColor> session {sessionId.slice(0, 8)}</Text>
+      </Box>
     </Box>
   );
 }

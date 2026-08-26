@@ -43,10 +43,17 @@ export { grepTool } from "./tools/grep.js";
 export { globTool } from "./tools/glob.js";
 export { webFetchTool } from "./tools/web-fetch.js";
 export { createExitPlanModeTool } from "./tools/exit-plan-mode.js";
+export { createAskUserQuestionTool } from "./tools/ask-user-question.js";
+export type { UserQuestionRequest, UserQuestionOption } from "./tools/ask-user-question.js";
 export { createTaskTool } from "./tools/task.js";
 export { buildAgentTools } from "./tools/build-agent-tools.js";
 export { ToolRegistry, textResult } from "./tools/types.js";
-export type { ToolDefinition, ToolExecutionContext, ToolResult } from "./tools/types.js";
+export type {
+  ToolDefinition,
+  ToolExecutionContext,
+  ToolResult,
+  DiffPreview,
+} from "./tools/types.js";
 export { resolveToolPath } from "./tools/resolve-path.js";
 export type { ResolvedToolPath } from "./tools/resolve-path.js";
 export {

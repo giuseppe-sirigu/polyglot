@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolveToolPath } from "./resolve-path.js";
-import { type ToolDefinition, textResult } from "./types.js";
+import { type DiffPreview, type ToolDefinition, textResult } from "./types.js";
 
 interface EditFileInput {
   path: string;
@@ -39,6 +39,21 @@ export const editFileTool: ToolDefinition<EditFileInput> = {
     },
     required: ["path", "old_string", "new_string"],
     additionalProperties: false,
+  },
+  async previewDiff(input, ctx): Promise<DiffPreview | null> {
+    const resolved = resolveToolPath(input.path, ctx.cwd);
+    if ("error" in resolved) return null;
+    try {
+      const original = await readFile(resolved.path, { encoding: "utf8", signal: ctx.signal });
+      if (countOccurrences(original, input.old_string) !== 1) return null;
+      return {
+        label: input.path,
+        oldText: original,
+        newText: original.replace(input.old_string, input.new_string),
+      };
+    } catch {
+      return null;
+    }
   },
   async execute(input, ctx) {
     const resolved = resolveToolPath(input.path, ctx.cwd);

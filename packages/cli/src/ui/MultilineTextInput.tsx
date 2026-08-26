@@ -1,5 +1,5 @@
 import { Box, Text, useInput, useStdin } from "ink";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 
 export interface MultilineTextInputProps {
   value: string;
@@ -13,15 +13,23 @@ export interface MultilineTextInputProps {
 const HOME_SEQUENCES = ["\x1b[H", "\x1bOH", "\x1b[1~", "\x1b[7~"];
 const END_SEQUENCES = ["\x1b[F", "\x1bOF", "\x1b[4~", "\x1b[8~"];
 
-function lineBounds(value: string, offset: number): [start: number, end: number] {
-  const start = value.lastIndexOf("\n", offset - 1) + 1;
-  const nextBreak = value.indexOf("\n", offset);
-  const end = nextBreak === -1 ? value.length : nextBreak;
+// Ink's parser (parse-keypress.js) maps the physical Backspace key's byte (0x7f, sent by
+// most terminals including tmux's "BSpace") to `key.name === 'delete'` — the same name it
+// gives the physical Delete key's sequence (\x1b[3~ and rxvt/putty variants). `key.backspace`
+// only fires for the raw \b/\x08 byte, which almost no physical key actually sends. So Ink's
+// public delete/backspace flags cannot tell these two keys apart — read the raw bytes instead.
+const BACKSPACE_SEQUENCES = ["\x7f", "\b"];
+const FORWARD_DELETE_SEQUENCES = ["\x1b[3~", "\x1b[3$", "\x1b[3^"];
+
+function lineBounds(text: string, offset: number): [start: number, end: number] {
+  const start = text.lastIndexOf("\n", offset - 1) + 1;
+  const nextBreak = text.indexOf("\n", offset);
+  const end = nextBreak === -1 ? text.length : nextBreak;
   return [start, end];
 }
 
-function moveVertical(value: string, offset: number, direction: -1 | 1): number {
-  const lines = value.split("\n");
+function moveVertical(text: string, offset: number, direction: -1 | 1): number {
+  const lines = text.split("\n");
   let runningOffset = 0;
   let lineIndex = 0;
   let column = 0;
@@ -47,17 +55,29 @@ function moveVertical(value: string, offset: number, direction: -1 | 1): number 
 }
 
 export function MultilineTextInput({ value, onChange, onSubmit }: MultilineTextInputProps) {
-  const [cursorOffset, setCursorOffset] = useState(value.length);
+  // Mutated synchronously (not via setState) so a burst of keypresses delivered within a
+  // single React batch — e.g. several escape sequences arriving in one stdin chunk — each see
+  // the previous keypress's result instead of racing on a stale render-time closure.
+  const stateRef = useRef({ text: value, cursor: value.length });
+  const [, bump] = useReducer((n: number) => n + 1, 0);
   const { internal_eventEmitter } = useStdin();
 
-  // Keep the cursor in bounds when `value` changes from outside (e.g. cleared on submit).
-  useEffect(() => {
-    setCursorOffset((prev) => Math.min(prev, value.length));
-  }, [value]);
+  const apply = useCallback(
+    (nextText: string, nextCursor: number) => {
+      const changed = nextText !== stateRef.current.text;
+      stateRef.current = { text: nextText, cursor: nextCursor };
+      if (changed) onChange(nextText);
+      bump();
+    },
+    [onChange],
+  );
 
   useInput((input, key) => {
+    const { text, cursor } = stateRef.current;
+
     if (key.return) {
-      onSubmit(value);
+      onSubmit(text);
+      apply("", 0);
       return;
     }
 
@@ -66,54 +86,42 @@ export function MultilineTextInput({ value, onChange, onSubmit }: MultilineTextI
     // sets it true) while `input` collapses to a bare "\r" — that combination is what
     // distinguishes this case from everything else.
     if (input === "\r") {
-      const next = `${value.slice(0, cursorOffset)}\n${value.slice(cursorOffset)}`;
-      onChange(next);
-      setCursorOffset(cursorOffset + 1);
+      apply(`${text.slice(0, cursor)}\n${text.slice(cursor)}`, cursor + 1);
       return;
     }
 
-    if (key.delete) {
-      if (cursorOffset < value.length) {
-        onChange(value.slice(0, cursorOffset) + value.slice(cursorOffset + 1));
-      }
-      return;
-    }
-
-    if (key.backspace) {
-      if (cursorOffset > 0) {
-        onChange(value.slice(0, cursorOffset - 1) + value.slice(cursorOffset));
-        setCursorOffset(cursorOffset - 1);
-      }
-      return;
-    }
+    // Backspace/Delete are handled entirely by the raw-stream listener below, since Ink's
+    // key.delete/key.backspace flags can't distinguish the two physical keys (see above). Both
+    // land here with `input === ''` (they're in Ink's nonAlphanumericKeys list), so falling
+    // through to the final catch-all below is a safe no-op for them.
 
     if (key.leftArrow) {
-      setCursorOffset(Math.max(0, cursorOffset - 1));
+      apply(text, Math.max(0, cursor - 1));
       return;
     }
 
     if (key.rightArrow) {
-      setCursorOffset(Math.min(value.length, cursorOffset + 1));
+      apply(text, Math.min(text.length, cursor + 1));
       return;
     }
 
     if (key.upArrow) {
-      setCursorOffset(moveVertical(value, cursorOffset, -1));
+      apply(text, moveVertical(text, cursor, -1));
       return;
     }
 
     if (key.downArrow) {
-      setCursorOffset(moveVertical(value, cursorOffset, 1));
+      apply(text, moveVertical(text, cursor, 1));
       return;
     }
 
     if (key.ctrl && input === "a") {
-      setCursorOffset(lineBounds(value, cursorOffset)[0]);
+      apply(text, lineBounds(text, cursor)[0]);
       return;
     }
 
     if (key.ctrl && input === "e") {
-      setCursorOffset(lineBounds(value, cursorOffset)[1]);
+      apply(text, lineBounds(text, cursor)[1]);
       return;
     }
 
@@ -121,26 +129,34 @@ export function MultilineTextInput({ value, onChange, onSubmit }: MultilineTextI
       return;
     }
 
-    const next = value.slice(0, cursorOffset) + input + value.slice(cursorOffset);
-    onChange(next);
-    setCursorOffset(cursorOffset + input.length);
+    apply(text.slice(0, cursor) + input + text.slice(cursor), cursor + input.length);
   });
 
   useEffect(() => {
     const onData = (chunk: string) => {
+      const { text, cursor } = stateRef.current;
       if (HOME_SEQUENCES.includes(chunk)) {
-        setCursorOffset((prev) => lineBounds(value, prev)[0]);
+        apply(text, lineBounds(text, cursor)[0]);
       } else if (END_SEQUENCES.includes(chunk)) {
-        setCursorOffset((prev) => lineBounds(value, prev)[1]);
+        apply(text, lineBounds(text, cursor)[1]);
+      } else if (BACKSPACE_SEQUENCES.includes(chunk)) {
+        if (cursor > 0) {
+          apply(text.slice(0, cursor - 1) + text.slice(cursor), cursor - 1);
+        }
+      } else if (FORWARD_DELETE_SEQUENCES.includes(chunk)) {
+        if (cursor < text.length) {
+          apply(text.slice(0, cursor) + text.slice(cursor + 1), cursor);
+        }
       }
     };
     internal_eventEmitter.on("input", onData);
     return () => {
       internal_eventEmitter.off("input", onData);
     };
-  }, [internal_eventEmitter, value]);
+  }, [internal_eventEmitter, apply]);
 
-  const lines = value.length === 0 ? [""] : value.split("\n");
+  const { text, cursor } = stateRef.current;
+  const lines = text.length === 0 ? [""] : text.split("\n");
   let runningOffset = 0;
 
   return (
@@ -148,14 +164,14 @@ export function MultilineTextInput({ value, onChange, onSubmit }: MultilineTextI
       {lines.map((line, idx) => {
         const lineStart = runningOffset;
         runningOffset += line.length + 1;
-        const cursorInLine = cursorOffset >= lineStart && cursorOffset <= lineStart + line.length;
+        const cursorInLine = cursor >= lineStart && cursor <= lineStart + line.length;
 
         if (!cursorInLine) {
           // biome-ignore lint/suspicious/noArrayIndexKey: lines are re-derived fresh every render, no stable id
           return <Text key={idx}>{line.length > 0 ? line : " "}</Text>;
         }
 
-        const col = cursorOffset - lineStart;
+        const col = cursor - lineStart;
         const before = line.slice(0, col);
         const atCursor = col < line.length ? line[col] : " ";
         const after = col < line.length ? line.slice(col + 1) : "";

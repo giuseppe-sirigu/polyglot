@@ -1,7 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { resolveToolPath } from "./resolve-path.js";
-import { type ToolDefinition, textResult } from "./types.js";
+import { type DiffPreview, type ToolDefinition, textResult } from "./types.js";
 
 interface WriteFileInput {
   path: string;
@@ -22,6 +22,17 @@ export const writeFileTool: ToolDefinition<WriteFileInput> = {
     },
     required: ["path", "content"],
     additionalProperties: false,
+  },
+  async previewDiff(input, ctx): Promise<DiffPreview | null> {
+    const resolved = resolveToolPath(input.path, ctx.cwd);
+    if ("error" in resolved) return null;
+    let existing = "";
+    try {
+      existing = await readFile(resolved.path, { encoding: "utf8", signal: ctx.signal });
+    } catch {
+      // File doesn't exist yet — diff against empty, which reads as an all-additions preview.
+    }
+    return { label: input.path, oldText: existing, newText: input.content };
   },
   async execute(input, ctx) {
     const resolved = resolveToolPath(input.path, ctx.cwd);

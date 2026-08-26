@@ -7,11 +7,13 @@ import {
   type ProviderAdapter,
   type ResolvedConfig,
   type Session,
+  type UserQuestionRequest,
   bashTool,
   buildAgentTools,
   buildToolSystemPrompt,
   checkForUpdate,
   compactSession,
+  createAskUserQuestionTool,
   createExitPlanModeTool,
   editFileTool,
   getAutoUpdatePreference,
@@ -29,6 +31,7 @@ import {
 import { Box, Static, Text, useApp, useInput } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalPrompt } from "./ApprovalPrompt.js";
+import { AskUserQuestionPrompt } from "./AskUserQuestionPrompt.js";
 import { AutoUpdateConsentPrompt } from "./AutoUpdateConsentPrompt.js";
 import { Header } from "./Header.js";
 import { InputBar } from "./InputBar.js";
@@ -66,6 +69,8 @@ export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
   const approvalResolveRef = useRef<((response: ApprovalResponse) => void) | null>(null);
   const [planRequest, setPlanRequest] = useState<string | null>(null);
   const planResolveRef = useRef<((approved: boolean) => void) | null>(null);
+  const [questionRequest, setQuestionRequest] = useState<UserQuestionRequest | null>(null);
+  const questionResolveRef = useRef<((answers: string[]) => void) | null>(null);
   const [showUpdateConsent, setShowUpdateConsent] = useState(false);
   const updateConsentResolveRef = useRef<((enabled: boolean) => void) | null>(null);
   const nextId = useRef(0);
@@ -122,6 +127,15 @@ export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
               setPlanRequest(plan);
             }),
           "manual",
+        ),
+      );
+      tools.register(
+        createAskUserQuestionTool(
+          (request) =>
+            new Promise<string[]>((resolve) => {
+              questionResolveRef.current = resolve;
+              setQuestionRequest(request);
+            }),
         ),
       );
     }
@@ -213,6 +227,7 @@ export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
       key.shift &&
       !approvalRequest &&
       !planRequest &&
+      !questionRequest &&
       !showUpdateConsent &&
       !isRunning
     ) {
@@ -333,6 +348,12 @@ export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
     setPlanRequest(null);
   }
 
+  function respondQuestion(answers: string[]) {
+    questionResolveRef.current?.(answers);
+    questionResolveRef.current = null;
+    setQuestionRequest(null);
+  }
+
   function respondUpdateConsent(enabled: boolean) {
     updateConsentResolveRef.current?.(enabled);
     updateConsentResolveRef.current = null;
@@ -349,6 +370,8 @@ export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
               provider={resolved.engine.provider}
               model={resolved.engine.model}
               sessionId={session.id}
+              version={__VERSION__}
+              cwd={session.cwd}
             />
           ) : (
             <TranscriptLine key={entry.id} item={entry} />
@@ -367,6 +390,8 @@ export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
         <ApprovalPrompt request={approvalRequest} onRespond={respondApproval} />
       ) : planRequest ? (
         <PlanApprovalPrompt plan={planRequest} onRespond={respondPlan} />
+      ) : questionRequest ? (
+        <AskUserQuestionPrompt request={questionRequest} onRespond={respondQuestion} />
       ) : showUpdateConsent ? (
         <AutoUpdateConsentPrompt onRespond={respondUpdateConsent} />
       ) : (

@@ -35,6 +35,15 @@ export async function executeToolCall(
     toolName: tool.name,
     category: tool.permission,
     input: call.input,
+    cwd: ctx.cwd,
+    loadDiff: tool.previewDiff
+      ? () =>
+          tool.previewDiff?.(call.input, {
+            cwd: ctx.cwd,
+            sessionId: ctx.sessionId,
+            signal: ctx.signal,
+          }) ?? Promise.resolve(null)
+      : undefined,
   });
   if (decision.decision === "deny") {
     return {

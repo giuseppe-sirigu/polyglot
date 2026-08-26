@@ -1,5 +1,19 @@
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { PermissionDecision, PermissionGate, PermissionRequest } from "./gate.js";
 import { matchesAny } from "./rule-matcher.js";
+
+/** True if a tool's `path` argument, once resolved against cwd, points outside cwd. Tools
+ * without a string `path` field (bash, web_fetch, glob's pattern) are left alone — this is
+ * scoped to the file-path tools (read/write/edit/grep) that take an explicit target path. */
+function targetsOutsideCwd(request: PermissionRequest): boolean {
+  const input = request.input as Record<string, unknown> | undefined;
+  const path = input && typeof input.path === "string" ? input.path : null;
+  if (!path) return false;
+
+  const target = isAbsolute(path) ? path : resolve(request.cwd, path);
+  const rel = relative(request.cwd, target);
+  return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+}
 
 export type PermissionMode = "manual" | "auto" | "plan";
 export type ApprovalResponse = "allow_once" | "allow_always" | "deny";
@@ -13,9 +27,11 @@ export interface PolicyGateOptions {
 }
 
 /**
- * The real permission gate: manual (ask, with an "always allow this tool for the
- * rest of the session" shortcut), auto (allow unless deny-listed), and plan
- * (read-only, hard override regardless of allow rules).
+ * The real permission gate: manual (ask before any change — write/execute/network — with an
+ * "always allow this tool for the rest of the session" shortcut; reads are never asked about),
+ * auto (allow unless deny-listed), and plan (read-only, hard override regardless of allow
+ * rules). A target outside the working directory always asks, in every mode, regardless of
+ * category.
  */
 export class PolicyGate implements PermissionGate {
   private mode: PermissionMode;
@@ -56,6 +72,28 @@ export class PolicyGate implements PermissionGate {
       return { decision: "allow" };
     }
 
+    // A target outside the working directory always needs a human's eyes on it, even in auto
+    // or plan mode, since none of the usual rule/mode-based fast paths were written with
+    // "reaching outside the project" in mind.
+    if (targetsOutsideCwd(request)) {
+      if (!this.onAskUser) {
+        return {
+          decision: "deny",
+          reason: "target is outside the working directory and no interactive prompt is configured",
+        };
+      }
+      return this.askUser(
+        request,
+        `${request.toolName} targets a path outside the working directory (${request.cwd}).`,
+      );
+    }
+
+    // Read-only tools within the working directory never need a prompt, in any mode — manual
+    // mode is about gating changes (writes/execute/network), not gating looking around.
+    if (request.category === "read") {
+      return { decision: "allow" };
+    }
+
     if (this.mode === "auto" || this.mode === "plan") {
       return { decision: "allow" };
     }
@@ -67,8 +105,12 @@ export class PolicyGate implements PermissionGate {
       };
     }
 
-    const response = await this.onAskUser(request);
-    if (response === "deny") {
+    return this.askUser(request);
+  }
+
+  private async askUser(request: PermissionRequest, note?: string): Promise<PermissionDecision> {
+    const response = await this.onAskUser?.(note ? { ...request, note } : request);
+    if (response === "deny" || response === undefined) {
       return { decision: "deny", reason: "declined by the user" };
     }
     if (response === "allow_always") {
