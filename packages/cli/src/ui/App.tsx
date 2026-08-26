@@ -28,7 +28,7 @@ import {
   webFetchTool,
   writeFileTool,
 } from "@polyglot/core";
-import { Box, Static, Text, useApp, useInput } from "ink";
+import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalPrompt } from "./ApprovalPrompt.js";
 import { AskUserQuestionPrompt } from "./AskUserQuestionPrompt.js";
@@ -59,6 +59,7 @@ export interface AppProps {
 
 export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const [items, setItems] = useState<DisplayItem[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const streamingRef = useRef("");
@@ -361,7 +362,7 @@ export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" minHeight={stdout?.rows}>
       <Static items={staticEntries}>
         {(entry) =>
           entry.kind === "header" ? (
@@ -385,6 +386,11 @@ export function App({ resolved, adapter, session, resumed, mcp }: AppProps) {
           <Text color={theme.dim}>…thinking</Text>
         </Box>
       ) : null}
+
+      {/* Pushes the prompt/input area to the bottom of the terminal while the transcript is
+          short (like Claude Code); once printed content already fills the screen this
+          collapses to zero and everything scrolls normally. */}
+      <Box flexGrow={1} />
 
       {approvalRequest ? (
         <ApprovalPrompt request={approvalRequest} onRespond={respondApproval} />
