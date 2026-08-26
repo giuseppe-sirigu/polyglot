@@ -1,0 +1,140 @@
+import { describe, expect, it } from "vitest";
+import { ToolRegistry, textResult } from "../tools/types.js";
+import { resolveEnvelope } from "./resolve.js";
+import type { RawToolCallEnvelope } from "./types.js";
+
+function xmlEnvelope(declaredName: string | null, body: string): RawToolCallEnvelope {
+  return {
+    variant: "xml",
+    declaredName,
+    body,
+    raw: `<tool_call name="${declaredName}">${body}</tool_call>`,
+  };
+}
+
+function fencedEnvelope(body: string): RawToolCallEnvelope {
+  return { variant: "fenced", declaredName: null, body, raw: `\`\`\`tool_call\n${body}\n\`\`\`` };
+}
+
+function buildRegistry(): ToolRegistry {
+  const registry = new ToolRegistry();
+  registry.register({
+    name: "read_file",
+    description: "Read a file.",
+    permission: "read",
+    inputSchema: {
+      type: "object",
+      properties: { path: { type: "string" } },
+      required: ["path"],
+      additionalProperties: false,
+    },
+    async execute(input) {
+      return textResult(`contents of ${(input as { path: string }).path}`);
+    },
+  });
+  return registry;
+}
+
+describe("resolveEnvelope", () => {
+  it("resolves a well-formed xml envelope", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("read_file", '{"path": "a.ts"}'), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.name).toBe("read_file");
+      expect(result.input).toEqual({ path: "a.ts" });
+    }
+  });
+
+  it("repairs trailing commas and single quotes via jsonrepair", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("read_file", "{'path': 'a.ts',}"), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.input).toEqual({ path: "a.ts" });
+    }
+  });
+
+  it("falls back to loose key:value extraction for YAML-ish bodies", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("read_file", "path: a.ts"), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.input).toEqual({ path: "a.ts" });
+    }
+  });
+
+  it("fuzzy-corrects a near-miss tool name", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("read_fle", '{"path": "a.ts"}'), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.name).toBe("read_file");
+      expect(result.correctedFromName).toBe("read_fle");
+    }
+  });
+
+  it("corrects case-mismatched tool names", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("Read_File", '{"path": "a.ts"}'), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.name).toBe("read_file");
+    }
+  });
+
+  it("returns a structured error for an unknown tool name", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("delete_universe", "{}"), registry);
+    expect("message" in result).toBe(true);
+    if ("message" in result) {
+      expect(result.message).toMatch(/Unknown tool/);
+    }
+  });
+
+  it("returns a structured error when required arguments are missing", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("read_file", "{}"), registry);
+    expect("message" in result).toBe(true);
+    if ("message" in result) {
+      expect(result.message).toMatch(/failed validation/);
+    }
+  });
+
+  it("returns a structured error when the name attribute is missing entirely", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope(null, '{"path": "a.ts"}'), registry);
+    expect("message" in result).toBe(true);
+    if ("message" in result) {
+      expect(result.message).toMatch(/missing a "name" attribute/);
+    }
+  });
+
+  it("resolves the fenced OpenAI-style {name, arguments} fallback shape", () => {
+    const registry = buildRegistry();
+    const body = JSON.stringify({ name: "read_file", arguments: { path: "a.ts" } });
+    const result = resolveEnvelope(fencedEnvelope(body), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.name).toBe("read_file");
+      expect(result.input).toEqual({ path: "a.ts" });
+    }
+  });
+
+  it("resolves the fenced {tool, parameters} alias shape too", () => {
+    const registry = buildRegistry();
+    const body = JSON.stringify({ tool: "read_file", parameters: { path: "a.ts" } });
+    const result = resolveEnvelope(fencedEnvelope(body), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.name).toBe("read_file");
+      expect(result.input).toEqual({ path: "a.ts" });
+    }
+  });
+
+  it("returns a structured error for a fenced body with no name field", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(fencedEnvelope('{"path": "a.ts"}'), registry);
+    expect("message" in result).toBe(true);
+  });
+});
