@@ -2,7 +2,7 @@
   "name": "@usepolyglot/core",
   "version": "0.1.0",
   "private": true,
-  "description": "Provider-agnostic engine for Polyglot — a coding-agent CLI that works the same way whether the model is Claude, GPT, or an open-weight model running locally.",
+  "description": "Provider-agnostic engine for Polyglot. Bundled into @usepolyglot/cli at build time — not published on its own.",
   "license": "FSL-1.1-ALv2",
   "homepage": "https://usepolyglot.dev",
   "repository": {
@@ -20,9 +20,6 @@
     ".": "./dist/index.js"
   },
   "files": ["dist"],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
