@@ -31,7 +31,7 @@ branding/  # logo assets
 
 `packages/core` is UI-agnostic by design — a future VS Code extension or desktop app would be a new frontend against the same engine, not a rewrite. `@usepolyglot/core` is bundled into `@usepolyglot/cli` at build time by esbuild and is not published separately.
 
-End-user documentation lives in a separate repo, [`giuseppe-sirigu/polyglot-website`](https://github.com/giuseppe-sirigu/polyglot-website) (`src/content/docs/`), and is published to [usepolyglot.dev/docs](https://usepolyglot.dev/docs). **A change that alters user-facing behavior — a flag, a setting, a command, a default — should ship a companion PR to that repo.**
+End-user documentation lives at [usepolyglot.dev/docs](https://usepolyglot.dev/docs) (source in a separate, private website repo). **If your change alters user-facing behavior — a flag, a setting, a command, a default — call that out in the PR description so the docs get updated alongside it.**
 
 ## Before opening a PR
 
