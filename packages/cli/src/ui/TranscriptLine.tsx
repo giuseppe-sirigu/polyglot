@@ -1,12 +1,8 @@
 import { Box, Text } from "ink";
 import { renderMarkdown } from "./markdown.js";
 import { theme } from "./theme.js";
+import { describeToolCall, truncate } from "./toolDisplay.js";
 import type { DisplayItem } from "./types.js";
-
-function truncate(text: string, max: number): string {
-  const collapsed = text.replace(/\n/g, " ⏎ ");
-  return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed;
-}
 
 const TONE_COLOR = { info: theme.dim, warn: theme.warn, error: theme.error } as const;
 
@@ -26,13 +22,14 @@ export function TranscriptLine({ item }: { item: DisplayItem }) {
       return <Box marginTop={1}>{renderMarkdown(item.text)}</Box>;
 
     case "tool_call": {
-      const label = item.correctedFromName
-        ? `${item.name} (corrected from "${item.correctedFromName}")`
-        : item.name;
+      const label = describeToolCall(item.name, item.input);
+      const corrected = item.correctedFromName
+        ? ` (corrected from "${item.correctedFromName}")`
+        : "";
       return (
         <Box marginTop={1}>
           <Text color={theme.toolName}>⏺ {label}</Text>
-          <Text dimColor>({truncate(JSON.stringify(item.input), 90)})</Text>
+          {corrected ? <Text dimColor>{corrected}</Text> : null}
         </Box>
       );
     }
@@ -43,14 +40,14 @@ export function TranscriptLine({ item }: { item: DisplayItem }) {
           <Text color={item.isError ? theme.error : theme.success}>
             {item.isError ? "✗ " : "⎿ "}
           </Text>
-          <Text dimColor={!item.isError}>{truncate(item.resultText, 140)}</Text>
+          <Text dimColor={!item.isError}>{truncate(item.resultText, 300)}</Text>
         </Box>
       );
 
     case "tool_parse_error":
       return (
         <Box paddingLeft={2}>
-          <Text color={theme.warn}>⚠ tool call parse error: {truncate(item.message, 140)}</Text>
+          <Text color={theme.warn}>⚠ tool call parse error: {truncate(item.message, 300)}</Text>
         </Box>
       );
 

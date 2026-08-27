@@ -1,10 +1,21 @@
+import chalk from "chalk";
 import { Box, Text, useInput, useStdin } from "ink";
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import type { SlashCommand } from "./slashCommands.js";
 
 export interface MultilineTextInputProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
+  /** Live `/`-command matches for the text currently being typed (InputBar computes these from
+   * `value`) — while non-empty, up/down/tab are reclaimed for navigating/accepting a suggestion
+   * instead of their normal cursor-movement/no-op behavior. Accepting is done here (not by
+   * InputBar pushing a new `value` down) because this component owns its text as internal,
+   * uncontrolled state (`stateRef`) — it only reads the `value` prop once, at mount, so nothing
+   * external can inject text into it after that; only its own `apply()` can. */
+  suggestions?: SlashCommand[];
+  highlightedSuggestionIndex?: number;
+  onNavigateSuggestions?: (direction: -1 | 1) => void;
 }
 
 // Escape sequences a terminal sends for the literal Home/End keys, taken from Ink's own
@@ -54,7 +65,14 @@ function moveVertical(text: string, offset: number, direction: -1 | 1): number {
   return targetOffset + Math.min(column, targetLine.length);
 }
 
-export function MultilineTextInput({ value, onChange, onSubmit }: MultilineTextInputProps) {
+export function MultilineTextInput({
+  value,
+  onChange,
+  onSubmit,
+  suggestions = [],
+  highlightedSuggestionIndex = 0,
+  onNavigateSuggestions,
+}: MultilineTextInputProps) {
   // Mutated synchronously (not via setState) so a burst of keypresses delivered within a
   // single React batch — e.g. several escape sequences arriving in one stdin chunk — each see
   // the previous keypress's result instead of racing on a stale render-time closure.
@@ -74,6 +92,41 @@ export function MultilineTextInput({ value, onChange, onSubmit }: MultilineTextI
 
   useInput((input, key) => {
     const { text, cursor } = stateRef.current;
+
+    if (suggestions.length > 0) {
+      if (key.upArrow) {
+        onNavigateSuggestions?.(-1);
+        return;
+      }
+      if (key.downArrow) {
+        onNavigateSuggestions?.(1);
+        return;
+      }
+      // Not key.shift too — Shift+Tab is the global permission-mode cycle handled in App.tsx,
+      // and Ink delivers every keypress to every active useInput() with no way to stop that, so
+      // this must explicitly stay out of Shift+Tab's way rather than also firing alongside it.
+      if (key.tab && !key.shift) {
+        const chosen = suggestions[highlightedSuggestionIndex];
+        if (chosen) apply(`${chosen.command} `, chosen.command.length + 1);
+        return;
+      }
+      // Enter accepts whichever suggestion is highlighted, same as Tab. For a command that
+      // takes an argument (e.g. "/rename"), that just fills it into the input — running it
+      // immediately would skip the chance to type the argument — so only run right away when
+      // the command needs nothing more.
+      if (key.return) {
+        const chosen = suggestions[highlightedSuggestionIndex];
+        if (chosen) {
+          if (chosen.takesArgument) {
+            apply(`${chosen.command} `, chosen.command.length + 1);
+          } else {
+            onSubmit(chosen.command);
+            apply("", 0);
+          }
+          return;
+        }
+      }
+    }
 
     if (key.return) {
       onSubmit(text);
@@ -175,13 +228,16 @@ export function MultilineTextInput({ value, onChange, onSubmit }: MultilineTextI
         const before = line.slice(0, col);
         const atCursor = col < line.length ? line[col] : " ";
         const after = col < line.length ? line.slice(col + 1) : "";
+        // A single string with the cursor's styling embedded as raw ANSI (via chalk), not a
+        // separate sibling <Text> for the cursor: when a long unwrapped line word-wraps inside
+        // the bordered box, Ink's flexbox row layout doesn't correctly re-flow a *sibling*
+        // Text's position across that wrap — the cursor ends up floating at some arbitrary
+        // column instead of tracking the actual wrapped text. One Text node's own content wraps
+        // correctly, ANSI codes and all, because wrapping never needs to reason about sibling
+        // layout at all.
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: lines are re-derived fresh every render, no stable id
-          <Box key={idx}>
-            <Text>{before}</Text>
-            <Text inverse>{atCursor}</Text>
-            <Text>{after}</Text>
-          </Box>
+          <Text key={idx}>{before + chalk.inverse(atCursor) + after}</Text>
         );
       })}
     </Box>

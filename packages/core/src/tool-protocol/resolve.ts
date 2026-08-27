@@ -1,4 +1,4 @@
-import type { ToolRegistry } from "../tools/types.js";
+import type { JsonSchema, ToolRegistry } from "../tools/types.js";
 import { repairJson } from "./json-repair.js";
 import type { ParsedToolCall, RawToolCallEnvelope, ToolCallParseError } from "./types.js";
 import { validateAgainstSchema } from "./validator.js";
@@ -107,7 +107,7 @@ export function finalize(
     return {
       raw: source.raw,
       attemptedName: tool.name,
-      message: `Arguments for "${tool.name}" failed validation: ${validation.errors.join("; ")}`,
+      message: `Arguments for "${tool.name}" failed validation: ${validation.errors.join("; ")}${missingEveryRequiredKeyHint(tool.inputSchema, input)}`,
     };
   }
 
@@ -143,6 +143,18 @@ export function resolveToolName(
   }
 
   return { tool: undefined };
+}
+
+/** When a call is missing every one of the tool's required keys, the arguments were probably
+ * restructured entirely rather than just typo'd — the "additional property" errors alone (one
+ * per stray key) don't point at that, so add an explicit nudge toward the expected shape. Most
+ * commonly seen when a model spreads a file's own fields as sibling arguments instead of
+ * encoding them as a JSON string under a single "content"-style parameter. */
+function missingEveryRequiredKeyHint(schema: JsonSchema, input: unknown): string {
+  const required = (schema.required as string[]) ?? [];
+  if (required.length === 0 || !isPlainObject(input)) return "";
+  if (required.some((key) => key in input)) return "";
+  return ` This tool's arguments must be a JSON object with exactly these top-level keys: ${required.join(", ")}. If a value is structured data, encode it as a JSON string, not as separate sibling keys.`;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -11,7 +11,11 @@ export function createProviderAdapter(config: EngineConfig): ProviderAdapter {
     }
     return new AnthropicAdapter({
       apiKey: config.apiKey,
-      capabilities: { nativeToolCalling: "reliable", maxContextTokens: 200_000 },
+      capabilities: {
+        nativeToolCalling: "reliable",
+        maxContextTokens: 200_000,
+        structuredOutput: false,
+      },
     });
   }
 
@@ -19,6 +23,10 @@ export function createProviderAdapter(config: EngineConfig): ProviderAdapter {
     id: `openai-compatible:${config.baseURL ?? "default"}`,
     baseURL: config.baseURL,
     apiKey: config.apiKey,
-    capabilities: { nativeToolCalling: "unreliable", maxContextTokens: DEFAULT_MAX_CONTEXT_TOKENS },
+    capabilities: {
+      nativeToolCalling: "unreliable",
+      maxContextTokens: DEFAULT_MAX_CONTEXT_TOKENS,
+      structuredOutput: config.structuredOutput === true,
+    },
   });
 }

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { ENVELOPE_SCHEMA_NAME } from "../tool-protocol/structured-schema.js";
 import type {
   ChatRequest,
   ProviderAdapter,
@@ -11,6 +12,30 @@ export interface OpenAICompatibleConfig {
   baseURL?: string;
   apiKey?: string;
   capabilities: ProviderCapabilities;
+}
+
+/** Extracted as a standalone pure function so request-shape can be unit-tested without mocking
+ * the OpenAI SDK's client. */
+export function buildOpenAIRequestBody(
+  request: ChatRequest,
+): OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming {
+  return {
+    model: request.model,
+    messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
+    temperature: request.temperature,
+    max_tokens: request.maxOutputTokens,
+    stream: true,
+    response_format: request.responseSchema
+      ? {
+          type: "json_schema",
+          json_schema: {
+            name: ENVELOPE_SCHEMA_NAME,
+            schema: request.responseSchema,
+            strict: true,
+          },
+        }
+      : undefined,
+  };
 }
 
 export class OpenAICompatibleAdapter implements ProviderAdapter {
@@ -31,16 +56,9 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     request: ChatRequest,
     opts: { signal: AbortSignal },
   ): AsyncIterable<ProviderStreamEvent> {
-    const stream = await this.client.chat.completions.create(
-      {
-        model: request.model,
-        messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
-        temperature: request.temperature,
-        max_tokens: request.maxOutputTokens,
-        stream: true,
-      },
-      { signal: opts.signal },
-    );
+    const stream = await this.client.chat.completions.create(buildOpenAIRequestBody(request), {
+      signal: opts.signal,
+    });
 
     let stopReason: "end_turn" | "max_tokens" | "error" = "end_turn";
     for await (const chunk of stream) {

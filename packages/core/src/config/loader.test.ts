@@ -1,0 +1,135 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { loadConfig } from "./loader.js";
+
+function writeSettings(dir: string, settings: Record<string, unknown>) {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "settings.json"), JSON.stringify(settings));
+}
+
+/** Sets up isolated temp dirs for global (~/.polyglot) and project (.polyglot) settings so each
+ * test is independent of both the real home directory and of other tests, then cleans them up.
+ *
+ * Passing HOME inside the `env` object handed to loadConfig() is NOT enough on its own —
+ * globalSettingsPath() resolves the global settings path via node:os's homedir(), which reads
+ * the real process.env.HOME directly and ignores loadConfig()'s env parameter entirely (that
+ * parameter only feeds applyEnvOverrides, e.g. POLYGLOT_MODEL). Without also overriding the real
+ * process.env.HOME here, this test would silently read the actual developer's
+ * ~/.polyglot/settings.json instead of the fake one it just wrote. */
+function loadWithSettings(
+  global: Record<string, unknown> | null,
+  project: Record<string, unknown> | null,
+  env: NodeJS.ProcessEnv = {},
+) {
+  const cwd = mkdtempSync(join(tmpdir(), "polyglot-cwd-"));
+  const homeDir = mkdtempSync(join(tmpdir(), "polyglot-home-"));
+  const realHome = process.env.HOME;
+  try {
+    if (project) writeSettings(join(cwd, ".polyglot"), project);
+    if (global) writeSettings(join(homeDir, ".polyglot"), global);
+    process.env.HOME = homeDir;
+    return loadConfig(cwd, { ...env, HOME: homeDir } as NodeJS.ProcessEnv);
+  } finally {
+    process.env.HOME = realHome;
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(homeDir, { recursive: true, force: true });
+  }
+}
+
+describe("loadConfig structuredOutput", () => {
+  it("defaults to undefined when unset anywhere", () => {
+    const config = loadWithSettings({ provider: "openai-compatible", model: "m" }, null);
+    expect(config.engine.structuredOutput).toBeUndefined();
+  });
+
+  it("project settings override global settings", () => {
+    const config = loadWithSettings(
+      { provider: "openai-compatible", model: "m", structuredOutput: true },
+      { structuredOutput: false },
+    );
+    expect(config.engine.structuredOutput).toBe(false);
+  });
+
+  it("env var overrides settings files, accepting true/1", () => {
+    const config = loadWithSettings(
+      { provider: "openai-compatible", model: "m", structuredOutput: false },
+      null,
+      { POLYGLOT_STRUCTURED_OUTPUT: "1" },
+    );
+    expect(config.engine.structuredOutput).toBe(true);
+  });
+
+  it("env var accepts false/0", () => {
+    const config = loadWithSettings(
+      { provider: "openai-compatible", model: "m", structuredOutput: true },
+      null,
+      { POLYGLOT_STRUCTURED_OUTPUT: "0" },
+    );
+    expect(config.engine.structuredOutput).toBe(false);
+  });
+
+  it("is inert (undefined) for the anthropic provider even if set", () => {
+    const config = loadWithSettings(
+      { provider: "anthropic", model: "m", apiKey: "key", structuredOutput: true },
+      null,
+    );
+    expect(config.engine.structuredOutput).toBeUndefined();
+  });
+});
+
+describe("loadConfig models", () => {
+  it("defaults to an empty list when unset anywhere", () => {
+    const config = loadWithSettings({ provider: "openai-compatible", model: "m" }, null);
+    expect(config.models).toEqual([]);
+  });
+
+  it("concatenates global and project entries rather than replacing", () => {
+    const config = loadWithSettings(
+      {
+        provider: "openai-compatible",
+        model: "m",
+        models: [{ provider: "openai-compatible", model: "qwen3-coder" }],
+      },
+      { models: [{ provider: "anthropic", model: "claude-sonnet-4-5" }] },
+    );
+    expect(config.models.map((m) => m.model)).toEqual(["qwen3-coder", "claude-sonnet-4-5"]);
+  });
+
+  it("dedupes on (provider, model, baseURL), keeping the project entry's data and the original position", () => {
+    const config = loadWithSettings(
+      {
+        provider: "openai-compatible",
+        model: "m",
+        models: [
+          { provider: "openai-compatible", model: "qwen3-coder", label: "global label" },
+          { provider: "openai-compatible", model: "qwen2.5-coder-24k" },
+        ],
+      },
+      {
+        models: [{ provider: "openai-compatible", model: "qwen3-coder", label: "project label" }],
+      },
+    );
+    expect(config.models.map((m) => m.model)).toEqual(["qwen3-coder", "qwen2.5-coder-24k"]);
+    expect(config.models[0]?.label).toBe("project label");
+  });
+
+  it("drops malformed entries instead of making the whole settings file fail to load", () => {
+    // Regression test: an earlier shape of this field used {name, label} instead of
+    // {provider, model, label} — loadConfig() used to throw on any such stale/hand-edited
+    // entry, which meant the entire CLI failed to start over one bad array element.
+    const config = loadWithSettings(
+      {
+        provider: "openai-compatible",
+        model: "m",
+        models: [
+          { name: "qwen2.5-coder-24k", label: "Qwen 2.5 Coder 24K" },
+          { provider: "openai-compatible", model: "qwen3-coder", label: "Qwen 3 Coder" },
+        ],
+      },
+      null,
+    );
+    expect(config.models.map((m) => m.model)).toEqual(["qwen3-coder"]);
+  });
+});

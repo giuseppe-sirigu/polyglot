@@ -11,6 +11,8 @@ export interface Session {
   provider: string;
   model: string;
   messages: Message[];
+  /** Set via /rename — undefined until the user gives the session a name. */
+  name?: string;
 }
 
 export function createSession(params: { cwd: string; provider: string; model: string }): Session {

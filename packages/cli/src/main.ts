@@ -6,7 +6,7 @@ import {
   loadConfig,
   loadSession,
   persistSessionHeader,
-} from "@polyglot/core";
+} from "@usepolyglot/core";
 import { render } from "ink";
 import { createElement } from "react";
 import { App } from "./ui/App.js";

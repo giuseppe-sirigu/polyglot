@@ -17,13 +17,22 @@ interface SessionMessageLine {
   message: Message;
 }
 
-type SessionLine = SessionHeader | SessionMessageLine;
+/** Appended by /rename rather than rewriting the header in place, keeping the store's
+ * append-only design — loadSession() takes the last one as the session's current name. */
+interface SessionRenameLine {
+  kind: "rename";
+  name: string;
+  renamedAt: number;
+}
+
+type SessionLine = SessionHeader | SessionMessageLine | SessionRenameLine;
 
 export interface SessionSummary {
   id: string;
   cwd: string;
   provider: string;
   model: string;
+  name?: string;
   messageCount: number;
   updatedAt: number;
 }
@@ -54,6 +63,11 @@ export async function persistMessage(sessionId: string, message: Message): Promi
   await appendFile(sessionPath(sessionId), `${JSON.stringify(line)}\n`, "utf8");
 }
 
+export async function persistSessionRename(sessionId: string, name: string): Promise<void> {
+  const line: SessionRenameLine = { kind: "rename", name, renamedAt: Date.now() };
+  await appendFile(sessionPath(sessionId), `${JSON.stringify(line)}\n`, "utf8");
+}
+
 export async function loadSession(sessionId: string): Promise<Session | null> {
   let raw: string;
   try {
@@ -72,6 +86,8 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
   const messages = lines
     .filter((l): l is SessionMessageLine => l.kind === "message")
     .map((l) => l.message);
+  const renames = lines.filter((l): l is SessionRenameLine => l.kind === "rename");
+  const name = renames.at(-1)?.name;
 
   return {
     id: header.id,
@@ -79,6 +95,7 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
     provider: header.provider,
     model: header.model,
     messages,
+    ...(name ? { name } : {}),
   };
 }
 
@@ -101,6 +118,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
       cwd: session.cwd,
       provider: session.provider,
       model: session.model,
+      ...(session.name ? { name: session.name } : {}),
       messageCount: session.messages.length,
       updatedAt: stats?.mtimeMs ?? 0,
     });

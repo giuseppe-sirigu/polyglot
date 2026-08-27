@@ -11,3 +11,11 @@ export type DisplayItem =
  * fields minus "id". */
 export type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 export type NewDisplayItem = DistributiveOmit<DisplayItem, "id">;
+
+/** Tool-call-related items belonging to the turn currently in progress — kept in local state,
+ * collapsed by default with a keyboard toggle to expand, until the round they belong to
+ * finishes and they're flushed into the permanent (Static) transcript. */
+export type LiveTurnItem = Extract<
+  DisplayItem,
+  { kind: "tool_call" | "tool_result" | "tool_parse_error" }
+>;

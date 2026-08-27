@@ -1,8 +1,6 @@
 import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import { type ToolDefinition, textResult } from "./types.js";
 
-const execAsync = promisify(exec);
 const MAX_OUTPUT_CHARS = 20_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 
@@ -38,20 +36,30 @@ export const bashTool: ToolDefinition<BashInput> = {
     additionalProperties: false,
   },
   async execute(input, ctx) {
-    try {
-      const { stdout, stderr } = await execAsync(input.command, {
-        cwd: ctx.cwd,
-        signal: ctx.signal,
-        timeout: DEFAULT_TIMEOUT_MS,
-        maxBuffer: 10 * 1024 * 1024,
-        shell: SHELL,
-      });
-      const combined = [stdout, stderr].filter(Boolean).join("\n");
-      return textResult(truncate(combined || "(no output)"));
-    } catch (err) {
-      const e = err as { stdout?: string; stderr?: string; message?: string };
-      const combined = [e.stdout, e.stderr].filter(Boolean).join("\n") || e.message || String(err);
-      return textResult(truncate(combined), false);
-    }
+    return new Promise((resolve) => {
+      const child = exec(
+        input.command,
+        {
+          cwd: ctx.cwd,
+          signal: ctx.signal,
+          timeout: DEFAULT_TIMEOUT_MS,
+          maxBuffer: 10 * 1024 * 1024,
+          shell: SHELL,
+        },
+        (error, stdout, stderr) => {
+          if (error) {
+            const combined = [stdout, stderr].filter(Boolean).join("\n") || error.message;
+            resolve(textResult(truncate(combined), false));
+          } else {
+            const combined = [stdout, stderr].filter(Boolean).join("\n");
+            resolve(textResult(truncate(combined || "(no output)")));
+          }
+        },
+      );
+      // Commands run here are never interactive — close stdin immediately so a script that
+      // blocks on input (e.g. a model-generated `read -p ...`) gets EOF right away instead of
+      // hanging forever on a pipe nobody will ever write to.
+      child.stdin?.end();
+    });
   },
 };

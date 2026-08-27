@@ -95,6 +95,46 @@ describe("ToolCallStreamParser", () => {
     }
   });
 
+  it("accepts a closing </tool> tag as well as </tool_call>", () => {
+    const text = '<tool_call name="read_file">\n{"path": "src/app.ts"}\n</tool>\nDone.';
+    const events = runChunkedEveryWay(text);
+    expect(events.map((e) => e.type)).toEqual(["envelope", "text"]);
+    const e = events[0];
+    if (e?.type === "envelope") {
+      expect(e.envelope.body.trim()).toBe('{"path": "src/app.ts"}');
+    }
+    expect(textOf(events)).toBe("\nDone.");
+  });
+
+  it("closes each call independently when a model mixes </tool> and </tool_call> closers", () => {
+    const text = '<tool_call name="a">{"x":1}</tool>\n<tool_call name="b">{"y":2}</tool_call>';
+    const events = runChunkedEveryWay(text);
+    const envelopes = events.filter((e) => e.type === "envelope");
+    expect(envelopes).toHaveLength(2);
+  });
+
+  it("swallows a stray, never-opened fence marker right after </tool_call>", () => {
+    const text = '<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_CALL>\n```\n\n### Next up';
+    const events = runChunkedEveryWay(text);
+    expect(events.map((e) => e.type)).toEqual(["envelope", "text"]);
+    expect(textOf(events)).toBe("\n### Next up");
+  });
+
+  it("doesn't desync a later real fenced code block after swallowing a stray marker", () => {
+    const text =
+      '<tool_call name="a">{"x":1}</tool_call>\n```\n\nSome prose.\n\n```bash\necho hi\n```\nDone.';
+    const events = runChunkedEveryWay(text);
+    const envelopes = events.filter((e) => e.type === "envelope");
+    expect(envelopes).toHaveLength(1);
+    expect(textOf(events)).toBe("\nSome prose.\n\n```bash\necho hi\n```\nDone.");
+  });
+
+  it("leaves a real fenced block alone when it has a language tag right after a tool call", () => {
+    const text = '<tool_call name="a">{"x":1}</tool_call>\n```bash\necho hi\n```\n';
+    const events = runChunkedEveryWay(text);
+    expect(textOf(events)).toBe("\n```bash\necho hi\n```\n");
+  });
+
   it("parses the fenced ```tool_call fallback variant", () => {
     const text = '```tool_call\n{"name": "read_file", "arguments": {"path": "a.ts"}}\n```';
     const events = runChunkedEveryWay(text);

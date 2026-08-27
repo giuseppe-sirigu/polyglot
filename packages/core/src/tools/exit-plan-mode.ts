@@ -1,4 +1,5 @@
 import type { PolicyGate } from "../permissions/policy.js";
+import { persistPlan } from "../plans/store.js";
 import { type ToolDefinition, textResult } from "./types.js";
 
 interface ExitPlanModeInput {
@@ -30,7 +31,11 @@ export function createExitPlanModeTool(
       required: ["plan"],
       additionalProperties: false,
     },
-    async execute(input) {
+    async execute(input, ctx) {
+      // Best-effort: a proposed plan is worth keeping a durable record of regardless of whether
+      // the disk write happens to succeed, but persistence failing here must never block the
+      // actual approval flow the model and user are waiting on.
+      await persistPlan(ctx.sessionId, input.plan).catch(() => {});
       const approved = await onApprove(input.plan);
       if (approved) {
         gate.setMode(resumeMode);

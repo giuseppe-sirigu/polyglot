@@ -1,11 +1,11 @@
-import { readFileSync } from "node:fs";
+import { chmodSync, readFileSync } from "node:fs";
 import { build } from "esbuild";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 const corePkg = JSON.parse(readFileSync(new URL("../core/package.json", import.meta.url), "utf8"));
 
-// Bundle first-party workspace code (@polyglot/core's source) into one file, but
-// leave every real npm package external — including @polyglot/core's own runtime
+// Bundle first-party workspace code (@usepolyglot/core's source) into one file, but
+// leave every real npm package external — including @usepolyglot/core's own runtime
 // dependencies, which get pulled in transitively when its source is bundled — so
 // npm's own resolution installs them normally instead of esbuild trying to inline
 // CJS packages that don't tolerate that (native requires, etc). This means every
@@ -13,7 +13,7 @@ const corePkg = JSON.parse(readFileSync(new URL("../core/package.json", import.m
 const external = [
   ...Object.keys(pkg.dependencies ?? {}),
   ...Object.keys(corePkg.dependencies ?? {}),
-].filter((name) => name !== "@polyglot/core");
+].filter((name) => name !== "@usepolyglot/core");
 
 await build({
   entryPoints: ["src/main.ts"],
@@ -26,7 +26,13 @@ await build({
   banner: { js: "#!/usr/bin/env node" },
   define: {
     __VERSION__: JSON.stringify(pkg.version),
-    __PACKAGE_NAME__: JSON.stringify("polyglot-agent"),
+    __PACKAGE_NAME__: JSON.stringify(pkg.name),
   },
   logLevel: "info",
 });
+
+// esbuild writes the bundle with default (non-executable) file permissions regardless of the
+// shebang banner above — without this, npm strips the `bin` entry entirely at publish time
+// (silently, as a "was invalid and removed" warning), so `npm install -g` would install the
+// package but never create the `polyglot` command at all.
+chmodSync("dist/main.js", 0o755);

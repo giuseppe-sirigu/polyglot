@@ -101,6 +101,29 @@ describe("resolveEnvelope", () => {
     }
   });
 
+  it("adds a shape hint when every required key is missing (args restructured, not typo'd)", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("read_file", '{"contents": "whatever"}'), registry);
+    expect("message" in result).toBe(true);
+    if ("message" in result) {
+      expect(result.message).toMatch(
+        /must be a JSON object with exactly these top-level keys: path/,
+      );
+    }
+  });
+
+  it("omits the shape hint when a required key is merely typo'd alongside others", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(
+      xmlEnvelope("read_file", '{"path": "a.ts", "extra": 1}'),
+      registry,
+    );
+    expect("message" in result).toBe(true);
+    if ("message" in result) {
+      expect(result.message).not.toMatch(/must be a JSON object with exactly these top-level keys/);
+    }
+  });
+
   it("returns a structured error when the name attribute is missing entirely", () => {
     const registry = buildRegistry();
     const result = resolveEnvelope(xmlEnvelope(null, '{"path": "a.ts"}'), registry);

@@ -51,7 +51,7 @@ export function createTaskTool(config: TaskToolConfig): ToolDefinition<TaskInput
       const instructions =
         "Work autonomously, use tools as needed, and end with a concise final report of what you " +
         "found or did — that report is the only thing the orchestrating agent will see.";
-      const systemPrompt = `You are a sub-agent handling: ${input.description}\n${instructions}\n\n${buildToolSystemPrompt(subTools.list(), config.cwd)}`;
+      const systemPrompt = `You are a sub-agent handling: ${input.description}\n${instructions}\n\n${buildToolSystemPrompt(subTools.list(), config.cwd, undefined, { structured: config.adapter.capabilities.structuredOutput })}`;
 
       let finalText = "";
       let stopReason = "done";

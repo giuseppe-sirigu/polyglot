@@ -1,4 +1,4 @@
-import type { UserQuestionRequest } from "@polyglot/core";
+import type { UserQuestionRequest } from "@usepolyglot/core";
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
 import { theme } from "./theme.js";

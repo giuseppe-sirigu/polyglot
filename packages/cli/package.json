@@ -1,11 +1,25 @@
 {
-  "name": "@polyglot/cli",
+  "name": "@usepolyglot/cli",
   "version": "0.1.0",
   "private": true,
+  "description": "A coding-agent CLI that works the same way whether the model is Claude, GPT, or an open-weight model like Qwen, DeepSeek, GLM, or Llama running locally.",
   "license": "FSL-1.1-ALv2",
+  "homepage": "https://usepolyglot.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/giuseppe-sirigu/polyglot.git",
+    "directory": "packages/cli"
+  },
+  "bugs": "https://github.com/giuseppe-sirigu/polyglot/issues",
+  "author": "Giuseppe Sirigu",
+  "keywords": ["ai", "agent", "llm", "coding-agent", "cli", "mcp", "ollama", "local-llm"],
   "type": "module",
   "bin": {
     "polyglot": "./dist/main.js"
+  },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "node esbuild.config.mjs",
@@ -15,8 +29,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "@modelcontextprotocol/sdk": "^1.11.0",
-    "@polyglot/core": "workspace:*",
     "ajv": "^8.17.1",
+    "chalk": "^5.3.0",
     "diff": "^7.0.0",
     "glob": "^11.0.0",
     "ink": "^5.1.0",
@@ -29,6 +43,7 @@
   "devDependencies": {
     "@types/diff": "^6.0.0",
     "@types/react": "^18.3.18",
+    "@usepolyglot/core": "workspace:*",
     "esbuild": "^0.24.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

@@ -1,13 +1,27 @@
 {
-  "name": "@polyglot/core",
+  "name": "@usepolyglot/core",
   "version": "0.1.0",
   "private": true,
+  "description": "Provider-agnostic engine for Polyglot — a coding-agent CLI that works the same way whether the model is Claude, GPT, or an open-weight model running locally.",
   "license": "FSL-1.1-ALv2",
+  "homepage": "https://usepolyglot.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/giuseppe-sirigu/polyglot.git",
+    "directory": "packages/core"
+  },
+  "bugs": "https://github.com/giuseppe-sirigu/polyglot/issues",
+  "author": "Giuseppe Sirigu",
+  "keywords": ["ai", "agent", "llm", "coding-agent", "mcp", "ollama", "local-llm"],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
