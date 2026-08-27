@@ -124,6 +124,29 @@ If your local server supports `response_format: {type: "json_schema", ...}` (gra
 
 or `export POLYGLOT_STRUCTURED_OUTPUT=true`. Off by default - `openai-compatible` covers many different backends with inconsistent schema support, so this is opt-in rather than automatic. It's ignored (has no effect) when `provider` is `anthropic`, which already has reliable native tool use. When enabled, replies are shown once the full response arrives rather than streamed token-by-token, since the whole completion is one JSON object. Pointing this at the real hosted OpenAI API is not supported: OpenAI's strict structured-output mode requires every schema property to be listed as required, which this project's tool schemas (which have legitimately optional properties) don't satisfy.
 
+### Web search
+
+The `web_search` tool is available with **zero configuration** - it defaults to scraping DuckDuckGo's HTML endpoint, which needs no API key. To use a different backend, set `webSearch` in `settings.json` (or the matching env vars):
+
+```json
+{
+  "webSearch": {
+    "provider": "duckduckgo",
+    "apiKey": "",
+    "baseURL": ""
+  }
+}
+```
+
+| `provider` | Key? | Notes |
+|---|---|---|
+| `duckduckgo` (default) | no | HTML scrape. Zero setup. DuckDuckGo rate-limits automated requests, so heavy use can start returning errors - switch backends if that happens. |
+| `searxng` | no | Point `baseURL` at your [SearXNG](https://docs.searxng.org/) instance. The instance must have the JSON output format enabled (`search: { formats: [html, json] }` in its `settings.yml`) - many public instances don't. Best fit if you're already running local infra. |
+| `tavily` | yes | `apiKey` from [tavily.com](https://tavily.com) (free tier: 1,000 searches/month, no card). Returns an LLM-oriented summary alongside results. |
+| `brave` | yes | `apiKey` from the [Brave Search API](https://brave.com/search/api/) (free tier: 2,000 queries/month). |
+
+Env vars: `POLYGLOT_WEBSEARCH_PROVIDER`, `POLYGLOT_WEBSEARCH_API_KEY`, `POLYGLOT_WEBSEARCH_BASE_URL`. `/status` shows the active backend. Like `web_fetch`, `web_search` is a `network` tool: it prompts for approval in `manual` mode and runs freely in `auto` and `plan` mode. Your search query is sent to whichever backend you configure - see [Data handling](#data-handling).
+
 ### Multiple models (`/model`)
 
 List alternative models under `models` in `settings.json` and switch between them mid-session with `/model`, without restarting:
@@ -168,7 +191,7 @@ Polyglot's terminal frontend is a full TUI (built with [Ink](https://github.com/
 - You can keep typing and submitting while a turn is already running - each message queues (shown dimmed above the input box, and as a count next to "working…" in the status area) and runs automatically, in order, once the current one finishes. Nothing you type is ever blocked or dropped. Pressing **Esc** to stop the turn keeps the queue and runs it next; pressing **Esc** again while those queued messages are running cancels them.
 - **Shift+Tab** - cycle permission mode (`manual` → `auto` → `plan` → …) mid-session. The status bar at the bottom always shows the current mode. (Not Ctrl+Tab - that combination is intercepted by most terminal emulators for tab-switching and never reaches the program.)
 - **Esc** - stop the turn currently in progress (model call and/or a running tool) without exiting the app. Anything queued while it ran is kept and runs next; press **Esc** again while those queued messages are running to cancel them. (A rejected plan or an approval-prompt "Comment" still discards the queue - those supersede whatever was lined up.)
-- `/status` - print the current posture: model and endpoint (and whether it's local), permission mode, transcript persistence, retention, MCP servers, context usage. Read-only.
+- `/status` - print the current posture: model and endpoint (and whether it's local), permission mode, web-search backend, transcript persistence, retention, MCP servers, context usage. Read-only.
 - `/model` / `/model <name>` - open a picker to switch, or switch directly by name - see [Multiple models](#multiple-models-model) above.
 - `/rename <name>` - give the current session a name (shown in the status bar and in `/resume`'s picker instead of a raw session ID). Session names are separate from any file/branch naming - purely a label to help you find it again later.
 - `/resume` - pick a previous session from an **↑↓**-navigable list (most recently updated first, current session excluded, capped at the 15 most recent) and switch to it in place, replacing the visible transcript with that session's own history - re-rendered from its saved messages, tool calls and results included, not just a blank screen with a note that it resumed. If that session was on a model no longer in your `models[]`, it stays on whichever model is currently active instead and says so.
@@ -191,7 +214,7 @@ Set via `permissions.mode` in `settings.json` or `POLYGLOT_PERMISSION_MODE`:
 |---|---|
 | `manual` (default) | Every write/execute/network tool call prompts for approval. |
 | `auto` | Tool calls run without prompting, unless they match a `deny` rule. |
-| `plan` | Only read-only tools run automatically; everything else is hard-denied until the model calls `exit_plan_mode` with a plan and you approve it - at which point the session drops into `manual` mode for the rest of the conversation. |
+| `plan` | Only read-only and network research tools (`read_file`, `grep`, `glob`, `web_fetch`, `web_search`) run automatically; `write_file`, `edit_file`, `bash`, and `task` are hard-denied until the model calls `exit_plan_mode` with a plan and you approve it - at which point the session drops into `manual` mode for the rest of the conversation. |
 
 `allow`/`deny` rules are strings like `"read_file"` (matches the tool regardless of arguments) or `"bash:git *"` (matches only when the tool's primary argument - `command` for bash, `path` for file tools, `url` for `web_fetch` - matches the glob pattern).
 
@@ -201,7 +224,7 @@ Both the tool-approval and plan-approval prompts are a **↑↓**-navigable list
 
 ## Built-in tools
 
-`read_file`, `write_file`, `edit_file` (exact-match search/replace, fails closed if the match isn't unique), `bash`, `grep`, `glob`, `web_fetch`, plus `task` (delegate a sub-task to a nested sub-agent - see below) and, only in plan mode, `exit_plan_mode`.
+`read_file`, `write_file`, `edit_file` (exact-match search/replace, fails closed if the match isn't unique), `bash`, `grep`, `glob`, `web_fetch`, `web_search` ([configurable backend](#web-search)), plus `task` (delegate a sub-task to a nested sub-agent - see below) and, only in plan mode, `exit_plan_mode`.
 
 Every plan the model proposes via `exit_plan_mode` is also saved to `~/.polyglot/plans/<timestamp>-<session-id>.md`, independent of whether you approve or reject it - a durable record of what was proposed, the same role Claude Code's own `~/.claude/plans` serves. (Not written when the session is ephemeral - see [Data handling](#data-handling).)
 
@@ -210,6 +233,7 @@ Every plan the model proposes via `exit_plan_mode` is also saved to `~/.polyglot
 Where conversation data goes:
 
 - **The model provider you configure, and nothing else.** With `provider: openai-compatible` pointed at a local server (Ollama, vLLM, LM Studio, llama.cpp), prompts and tool output never leave the machine. With `provider: anthropic`, or an `openai-compatible` `baseURL` on a remote host, the conversation goes there. `/status` shows the active endpoint and flags whether it's local.
+- **`web_search` sends your query to the configured search backend** (DuckDuckGo by default; `searxng`/`tavily`/`brave` if you set one). `/status` shows which. If that matters, run in `manual` mode (the default) so each search prompts, or add a `deny` rule for `web_search`.
 - The only other outbound request is a version check against the npm registry on startup (it sends nothing about your session). It still runs when `autoUpdate` is `false`. To stay fully offline, block the registry host or run without network access - the CLI degrades gracefully.
 
 What's written to disk, under `~/.polyglot/`:

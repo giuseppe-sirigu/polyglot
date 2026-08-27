@@ -1,3 +1,4 @@
+import { htmlToText } from "./html.js";
 import { type ToolDefinition, textResult } from "./types.js";
 
 interface WebFetchInput {
@@ -6,22 +7,6 @@ interface WebFetchInput {
 
 const MAX_CHARS = 50_000;
 const TIMEOUT_MS = 20_000;
-
-function htmlToText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s*\n\s*\n+/g, "\n\n")
-    .trim();
-}
 
 export const webFetchTool: ToolDefinition<WebFetchInput> = {
   name: "web_fetch",

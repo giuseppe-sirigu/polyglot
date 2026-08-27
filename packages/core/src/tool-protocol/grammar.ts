@@ -62,9 +62,10 @@ export function buildToolSystemPrompt(
   const platformNote = tools.some((t) => t.name === "bash") ? `\n\n${describePlatform()}` : "";
   const planModeNote =
     mode === "plan"
-      ? "\n\nYou are currently in PLAN MODE: only read-only tools (e.g. read_file, grep, glob, " +
-        "web_fetch, ask_user_question) will succeed. write_file, edit_file, bash, and task are " +
-        "hard-denied right now — do not attempt them, they will just fail and waste a turn. Do " +
+      ? "\n\nYou are currently in PLAN MODE: only read-only and research tools (e.g. read_file, " +
+        "grep, glob, web_fetch, web_search, ask_user_question) will succeed. write_file, " +
+        "edit_file, bash, and task are hard-denied right now — do not attempt them, they will " +
+        "just fail and waste a turn. Do " +
         "your read-only research, then call exit_plan_mode with your plan; write/execute tools " +
         "become available only after the user approves it. Do NOT ask the user to confirm your " +
         'plan in prose (e.g. "Please confirm if you would like me to proceed", "Let me know if ' +

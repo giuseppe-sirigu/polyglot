@@ -73,10 +73,14 @@ export class PolicyGate implements PermissionGate {
       return { decision: "deny", reason: "blocked by a deny rule" };
     }
 
-    if (this.mode === "plan" && request.category !== "read") {
+    // Plan mode is for research, not mutation: read-only tools and network reads (web_fetch,
+    // web_search — GETs with no local side effects) run; write/execute stay blocked until a
+    // plan is approved.
+    if (this.mode === "plan" && request.category !== "read" && request.category !== "network") {
       return {
         decision: "deny",
-        reason: "plan mode only allows read-only tools until a plan is approved",
+        reason:
+          "plan mode only allows read-only and network research tools until a plan is approved",
       };
     }
 

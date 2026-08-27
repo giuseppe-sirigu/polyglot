@@ -165,4 +165,28 @@ describe("loadConfig data-handling settings", () => {
       }).retentionDays,
     ).toBe(30);
   });
+
+  it("webSearch defaults to the duckduckgo provider", () => {
+    expect(loadWithSettings(base, null).webSearch).toEqual({
+      provider: "duckduckgo",
+      apiKey: undefined,
+      baseURL: undefined,
+    });
+  });
+
+  it("resolves webSearch from settings, env, and project-over-global field merge", () => {
+    expect(
+      loadWithSettings({ ...base, webSearch: { provider: "tavily", apiKey: "k" } }, null).webSearch,
+    ).toMatchObject({ provider: "tavily", apiKey: "k" });
+
+    expect(
+      loadWithSettings(base, null, { POLYGLOT_WEBSEARCH_PROVIDER: "brave" }).webSearch.provider,
+    ).toBe("brave");
+
+    const merged = loadWithSettings(
+      { ...base, webSearch: { provider: "searxng", baseURL: "https://searx.global" } },
+      { webSearch: { baseURL: "https://searx.project" } },
+    ).webSearch;
+    expect(merged).toMatchObject({ provider: "searxng", baseURL: "https://searx.project" });
+  });
 });

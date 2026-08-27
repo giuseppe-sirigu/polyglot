@@ -66,6 +66,12 @@ export { bashTool } from "./tools/bash.js";
 export { grepTool } from "./tools/grep.js";
 export { globTool } from "./tools/glob.js";
 export { webFetchTool } from "./tools/web-fetch.js";
+export { createWebSearchTool } from "./tools/web-search.js";
+export type {
+  WebSearchConfig,
+  WebSearchProvider,
+  WebSearchResult,
+} from "./tools/web-search.js";
 export { createExitPlanModeTool } from "./tools/exit-plan-mode.js";
 export { createAskUserQuestionTool } from "./tools/ask-user-question.js";
 export type { UserQuestionRequest, UserQuestionOption } from "./tools/ask-user-question.js";

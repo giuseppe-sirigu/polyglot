@@ -45,6 +45,16 @@ export const SettingsSchema = z.object({
   /** When set, session transcripts and saved plans older than this many days are deleted on
    * startup. Unset = kept indefinitely (the historical behavior). */
   retentionDays: z.number().int().positive().optional(),
+  /** Backend for the `web_search` tool. `provider` is left without a schema default so
+   * layered configs can distinguish "unset" from "set"; the `duckduckgo` default is applied in
+   * loader.ts. `baseURL` is the SearXNG instance URL; `apiKey` is for tavily/brave. */
+  webSearch: z
+    .object({
+      provider: z.enum(["duckduckgo", "searxng", "tavily", "brave"]).optional(),
+      apiKey: z.string().optional(),
+      baseURL: z.string().optional(),
+    })
+    .optional(),
   /** Undefined means "never asked" — the CLI shows a one-time consent prompt
    * in that case. true/false is the user's stored answer, applied silently
    * on every future run. Lives only in the global settings file, never

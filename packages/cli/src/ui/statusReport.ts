@@ -4,6 +4,11 @@ export interface StatusReportFields {
   /** anthropic → undefined (hosted API); openai-compatible → the configured baseURL. */
   baseURL: string | undefined;
   permissionMode: string;
+  webSearchProvider: string;
+  /** SearXNG instance URL, when the provider is searxng. */
+  webSearchBaseURL: string | undefined;
+  /** Whether an API key is configured (tavily/brave need one). */
+  webSearchHasKey: boolean;
   /** Absolute path the transcript is written to, or null when the session is ephemeral. */
   transcriptPath: string | null;
   retentionDays: number | undefined;
@@ -33,12 +38,23 @@ export function describeEndpoint(provider: string, baseURL: string | undefined):
   return `${baseURL} — ${local ? "local (nothing leaves this machine)" : "remote (conversation data leaves this machine)"}`;
 }
 
+function describeWebSearch(f: StatusReportFields): string {
+  if (f.webSearchProvider === "searxng") {
+    return `searxng${f.webSearchBaseURL ? ` (${f.webSearchBaseURL})` : " — no baseURL set"}`;
+  }
+  if (f.webSearchProvider === "tavily" || f.webSearchProvider === "brave") {
+    return `${f.webSearchProvider}${f.webSearchHasKey ? " (key set)" : " — NO KEY: set webSearch.apiKey"}`;
+  }
+  return `${f.webSearchProvider} (no key needed; sends queries to the backend)`;
+}
+
 export function formatStatusReport(f: StatusReportFields): string {
   const lines = [
     "Session status",
     `  model:        ${f.provider} / ${f.model}`,
     `  endpoint:     ${describeEndpoint(f.provider, f.baseURL)}`,
     `  permissions:  ${f.permissionMode}`,
+    `  web search:   ${describeWebSearch(f)}`,
     "  secret files: read/write of .env, keys, .ssh/… always prompts for approval",
     `  transcript:   ${
       f.transcriptPath ? `saved → ${f.transcriptPath}` : "ephemeral — nothing written to disk"

@@ -38,3 +38,28 @@ describe("PolicyGate — secret files", () => {
     expect(decision.decision).toBe("allow");
   });
 });
+
+describe("PolicyGate — plan mode", () => {
+  const netReq: PermissionRequest = {
+    toolName: "web_search",
+    category: "network",
+    input: { query: "x" },
+    cwd: "/proj",
+  };
+  const writeReq: PermissionRequest = {
+    toolName: "write_file",
+    category: "write",
+    input: { path: "src/x.ts" },
+    cwd: "/proj",
+  };
+
+  it("allows network research tools", async () => {
+    const gate = new PolicyGate({ mode: "plan" });
+    expect((await gate.evaluate(netReq)).decision).toBe("allow");
+  });
+
+  it("still hard-denies write/execute", async () => {
+    const gate = new PolicyGate({ mode: "plan", onAskUser: vi.fn() });
+    expect((await gate.evaluate(writeReq)).decision).toBe("deny");
+  });
+});

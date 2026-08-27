@@ -20,6 +20,7 @@ import {
   createExitPlanModeTool,
   createProviderAdapter,
   createSession,
+  createWebSearchTool,
   editFileTool,
   findModelOption,
   getAutoUpdatePreference,
@@ -252,6 +253,7 @@ export function App({
       grepTool,
       globTool,
       webFetchTool,
+      createWebSearchTool(resolved.webSearch),
       ...(mcp?.tools ?? []),
     ];
     const built = buildAgentTools({
@@ -500,6 +502,9 @@ export function App({
           model: activeModel.model,
           baseURL: activeModel.provider === "anthropic" ? undefined : resolved.engine.baseURL,
           permissionMode: mode,
+          webSearchProvider: resolved.webSearch.provider,
+          webSearchBaseURL: resolved.webSearch.baseURL,
+          webSearchHasKey: Boolean(resolved.webSearch.apiKey),
           transcriptPath: resolved.persistTranscripts
             ? `~/.polyglot/sessions/${session.id}.jsonl`
             : null,

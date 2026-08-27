@@ -29,6 +29,9 @@ describe("formatStatusReport", () => {
     model: "qwen2.5-coder",
     baseURL: "http://localhost:11434/v1",
     permissionMode: "manual",
+    webSearchProvider: "duckduckgo",
+    webSearchBaseURL: undefined,
+    webSearchHasKey: false,
     transcriptPath: "~/.polyglot/sessions/abc.jsonl",
     retentionDays: undefined,
     autoUpdate: true,
@@ -51,5 +54,17 @@ describe("formatStatusReport", () => {
   it("reports retention when set", () => {
     expect(formatStatusReport({ ...base, retentionDays: 30 })).toMatch(/after 30 days/);
     expect(formatStatusReport(base)).toMatch(/kept indefinitely/);
+  });
+
+  it("shows the web search backend", () => {
+    expect(formatStatusReport(base)).toMatch(/web search:\s+duckduckgo/);
+    const tavilyNoKey = formatStatusReport({ ...base, webSearchProvider: "tavily" });
+    expect(tavilyNoKey).toMatch(/tavily — NO KEY/);
+    const searxng = formatStatusReport({
+      ...base,
+      webSearchProvider: "searxng",
+      webSearchBaseURL: "https://searx.example",
+    });
+    expect(searxng).toMatch(/searxng \(https:\/\/searx\.example\)/);
   });
 });
