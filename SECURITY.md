@@ -6,7 +6,7 @@ This project is pre-1.0 and moving quickly. Only the latest published release is
 
 ## Automated scanning
 
-CI runs [CodeQL](https://codeql.github.com/) (security-extended query suite) on every push and PR, plus a weekly scheduled scan, and [Dependabot](https://docs.github.com/en/code-security/dependabot) checks dependencies for known CVEs weekly. Findings from either don't need a separate report — they're visible in the repo's Security tab.
+CI runs [CodeQL](https://codeql.github.com/) (security-extended query suite) on every push and PR, plus a weekly scheduled scan, and [Dependabot](https://docs.github.com/en/code-security/dependabot) alerts flag known CVEs in dependencies as they're disclosed, with a weekly scan for outdated versions on top. Findings from either don't need a separate report — they're visible in the repo's Security tab.
 
 ## Reporting a vulnerability
 
