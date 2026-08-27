@@ -12,12 +12,19 @@ export function estimateSessionTokens(session: Session): number {
   return session.messages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
 }
 
+/** Best known size of the full prompt context: the provider-measured input-token count from the
+ * last turn when available (set by runAgentTurn), otherwise the char-heuristic estimate. The
+ * measured count also covers the system prompt and tool docs, which the estimate ignores. */
+export function sessionContextTokens(session: Session): number {
+  return session.lastContextTokens ?? estimateSessionTokens(session);
+}
+
 export function shouldCompact(
   session: Session,
   adapter: ProviderAdapter,
   threshold = 0.75,
 ): boolean {
-  const used = estimateSessionTokens(session);
+  const used = sessionContextTokens(session);
   return used > adapter.capabilities.maxContextTokens * threshold;
 }
 
@@ -36,7 +43,7 @@ export async function compactSession(
   adapter: ProviderAdapter,
   keepLastN = 6,
 ): Promise<{ before: number; after: number }> {
-  const before = estimateSessionTokens(session);
+  const before = sessionContextTokens(session);
   if (session.messages.length <= keepLastN) {
     return { before, after: before };
   }
@@ -69,6 +76,10 @@ export async function compactSession(
 
   session.messages.length = 0;
   session.messages.push(summaryMessage, ...kept);
+  // The provider-measured count is now stale (it reflected the pre-compaction prompt); drop it
+  // so callers fall back to a fresh estimate over the compacted messages until the next turn
+  // re-measures.
+  session.lastContextTokens = undefined;
 
   return { before, after: estimateSessionTokens(session) };
 }

@@ -1,5 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { utimes } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -8,6 +9,8 @@ import {
   persistMessage,
   persistSessionHeader,
   persistSessionRename,
+  persistSessionUsage,
+  pruneSessions,
 } from "./store.js";
 import { createSession } from "./types.js";
 
@@ -68,5 +71,56 @@ describe("session rename", () => {
     const summary = summaries.find((s) => s.id === session.id);
     expect(summary?.name).toBe("renamed");
     expect(summary?.messageCount).toBe(1);
+  });
+});
+
+describe("session usage", () => {
+  it("has no lastContextTokens before any turn reports usage", async () => {
+    const session = createSession({ cwd: "/tmp", provider: "openai-compatible", model: "m" });
+    await persistSessionHeader(session);
+    const loaded = await loadSession(session.id);
+    expect(loaded?.lastContextTokens).toBeUndefined();
+  });
+
+  it("loadSession restores the most recent usage count", async () => {
+    const session = createSession({ cwd: "/tmp", provider: "openai-compatible", model: "m" });
+    await persistSessionHeader(session);
+    await persistSessionUsage(session.id, 845);
+    await persistSessionUsage(session.id, 872);
+    const loaded = await loadSession(session.id);
+    expect(loaded?.lastContextTokens).toBe(872);
+  });
+});
+
+describe("pruneSessions", () => {
+  const sessionsDir = () => join(homedir(), ".polyglot", "sessions");
+
+  async function makeSession(ageDays: number): Promise<string> {
+    const s = createSession({ cwd: "/tmp", provider: "openai-compatible", model: "m" });
+    await persistSessionHeader(s);
+    if (ageDays > 0) {
+      const when = new Date(Date.now() - ageDays * 86_400_000);
+      await utimes(join(sessionsDir(), `${s.id}.jsonl`), when, when);
+    }
+    return s.id;
+  }
+
+  it("deletes files older than the cutoff, keeps fresh ones, spares exceptId", async () => {
+    const oldId = await makeSession(40);
+    const oldKeptAsCurrent = await makeSession(40);
+    const freshId = await makeSession(0);
+
+    const removed = await pruneSessions(30, oldKeptAsCurrent);
+
+    expect(removed).toBe(1);
+    expect(existsSync(join(sessionsDir(), `${oldId}.jsonl`))).toBe(false);
+    expect(existsSync(join(sessionsDir(), `${oldKeptAsCurrent}.jsonl`))).toBe(true);
+    expect(existsSync(join(sessionsDir(), `${freshId}.jsonl`))).toBe(true);
+  });
+
+  it("is a no-op for a non-positive age or a missing directory", async () => {
+    expect(await pruneSessions(0)).toBe(0);
+    rmSync(sessionsDir(), { recursive: true, force: true });
+    expect(await pruneSessions(30)).toBe(0);
   });
 });

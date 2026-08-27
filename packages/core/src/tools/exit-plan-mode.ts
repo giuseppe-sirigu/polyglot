@@ -16,6 +16,7 @@ export function createExitPlanModeTool(
   gate: PolicyGate,
   onApprove: (plan: string) => Promise<boolean>,
   resumeMode: "manual" | "auto" = "manual",
+  persist = true,
 ): ToolDefinition<ExitPlanModeInput> {
   return {
     name: "exit_plan_mode",
@@ -34,8 +35,9 @@ export function createExitPlanModeTool(
     async execute(input, ctx) {
       // Best-effort: a proposed plan is worth keeping a durable record of regardless of whether
       // the disk write happens to succeed, but persistence failing here must never block the
-      // actual approval flow the model and user are waiting on.
-      await persistPlan(ctx.sessionId, input.plan).catch(() => {});
+      // actual approval flow the model and user are waiting on. Skipped entirely when the
+      // session is ephemeral (persistTranscripts: false).
+      if (persist) await persistPlan(ctx.sessionId, input.plan).catch(() => {});
       const approved = await onApprove(input.plan);
       if (approved) {
         gate.setMode(resumeMode);

@@ -1,7 +1,9 @@
-import { appendFile, mkdir, readFile, readdir, stat } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Message, Session } from "./types.js";
+
+const DAY_MS = 86_400_000;
 
 interface SessionHeader {
   kind: "header";
@@ -25,7 +27,15 @@ interface SessionRenameLine {
   renamedAt: number;
 }
 
-type SessionLine = SessionHeader | SessionMessageLine | SessionRenameLine;
+/** Appended after each turn that reported provider usage — loadSession() takes the last one as
+ * the session's starting context size so `--resume` shows an accurate indicator right away. */
+interface SessionUsageLine {
+  kind: "usage";
+  inputTokens: number;
+  at: number;
+}
+
+type SessionLine = SessionHeader | SessionMessageLine | SessionRenameLine | SessionUsageLine;
 
 export interface SessionSummary {
   id: string;
@@ -68,6 +78,11 @@ export async function persistSessionRename(sessionId: string, name: string): Pro
   await appendFile(sessionPath(sessionId), `${JSON.stringify(line)}\n`, "utf8");
 }
 
+export async function persistSessionUsage(sessionId: string, inputTokens: number): Promise<void> {
+  const line: SessionUsageLine = { kind: "usage", inputTokens, at: Date.now() };
+  await appendFile(sessionPath(sessionId), `${JSON.stringify(line)}\n`, "utf8");
+}
+
 export async function loadSession(sessionId: string): Promise<Session | null> {
   let raw: string;
   try {
@@ -88,6 +103,8 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
     .map((l) => l.message);
   const renames = lines.filter((l): l is SessionRenameLine => l.kind === "rename");
   const name = renames.at(-1)?.name;
+  const usages = lines.filter((l): l is SessionUsageLine => l.kind === "usage");
+  const lastContextTokens = usages.at(-1)?.inputTokens;
 
   return {
     id: header.id,
@@ -96,7 +113,38 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
     model: header.model,
     messages,
     ...(name ? { name } : {}),
+    ...(lastContextTokens !== undefined ? { lastContextTokens } : {}),
   };
+}
+
+/** Deletes persisted session files whose last-modified time is older than `maxAgeDays`.
+ * Best-effort — unreadable dir or a failed unlink is swallowed. `exceptId` (the active session)
+ * is never deleted. Returns the number of files removed. */
+export async function pruneSessions(maxAgeDays: number, exceptId?: string): Promise<number> {
+  if (!(maxAgeDays > 0)) return 0;
+  const dir = sessionsDir();
+  let files: string[];
+  try {
+    files = (await readdir(dir)).filter((f) => f.endsWith(".jsonl"));
+  } catch {
+    return 0;
+  }
+  const cutoff = Date.now() - maxAgeDays * DAY_MS;
+  let removed = 0;
+  for (const file of files) {
+    if (exceptId && file === `${exceptId}.jsonl`) continue;
+    const full = join(dir, file);
+    try {
+      const { mtimeMs } = await stat(full);
+      if (mtimeMs < cutoff) {
+        await rm(full, { force: true });
+        removed++;
+      }
+    } catch {
+      // skip this file
+    }
+  }
+  return removed;
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {

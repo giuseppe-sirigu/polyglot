@@ -1,6 +1,7 @@
 import type { Dirent } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { SECRET_DIR_NAMES, isSecretFilename } from "../permissions/secret-paths.js";
 import { resolveToolPath } from "./resolve-path.js";
 import { type ToolDefinition, textResult } from "./types.js";
 
@@ -24,9 +25,15 @@ async function* walk(dir: string, signal: AbortSignal): AsyncGenerator<string> {
   for (const entry of entries) {
     if (signal.aborted) return;
     if (entry.isDirectory()) {
-      if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+      if (
+        IGNORED_DIRS.has(entry.name) ||
+        SECRET_DIR_NAMES.has(entry.name) ||
+        entry.name.startsWith(".")
+      )
+        continue;
       yield* walk(join(dir, entry.name), signal);
     } else if (entry.isFile()) {
+      if (isSecretFilename(entry.name)) continue;
       yield join(dir, entry.name);
     }
   }

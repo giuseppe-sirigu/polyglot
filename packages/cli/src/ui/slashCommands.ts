@@ -10,6 +10,7 @@ export interface SlashCommand {
 // Aliases (/quit, /newsession) still work when typed in full — they're just not advertised
 // here, so the popup has one canonical entry per action instead of near-duplicates.
 export const SLASH_COMMANDS: SlashCommand[] = [
+  { command: "/status", description: "Show model, data-handling & permission posture" },
   { command: "/model", description: "List or switch between configured models" },
   { command: "/rename", description: "Give this session a name", takesArgument: true },
   { command: "/resume", description: "Pick a previous session to resume" },

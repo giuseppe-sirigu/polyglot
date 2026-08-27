@@ -133,3 +133,36 @@ describe("loadConfig models", () => {
     expect(config.models.map((m) => m.model)).toEqual(["qwen3-coder"]);
   });
 });
+
+describe("loadConfig data-handling settings", () => {
+  const base = { provider: "openai-compatible", model: "m" };
+
+  it("persistTranscripts defaults to true", () => {
+    expect(loadWithSettings(base, null).persistTranscripts).toBe(true);
+    expect(loadWithSettings(base, null).retentionDays).toBeUndefined();
+  });
+
+  it("POLYGLOT_NO_PERSIST=1 forces persistTranscripts off", () => {
+    expect(loadWithSettings(base, null, { POLYGLOT_NO_PERSIST: "1" }).persistTranscripts).toBe(
+      false,
+    );
+  });
+
+  it("a project setting of false overrides a global true", () => {
+    const config = loadWithSettings(
+      { ...base, persistTranscripts: true },
+      { persistTranscripts: false },
+    );
+    expect(config.persistTranscripts).toBe(false);
+  });
+
+  it("reads retentionDays from settings and POLYGLOT_RETENTION_DAYS", () => {
+    expect(loadWithSettings({ ...base, retentionDays: 30 }, null).retentionDays).toBe(30);
+    expect(loadWithSettings(base, null, { POLYGLOT_RETENTION_DAYS: "7" }).retentionDays).toBe(7);
+    expect(
+      loadWithSettings({ ...base, retentionDays: 30 }, null, {
+        POLYGLOT_RETENTION_DAYS: "not-a-number",
+      }).retentionDays,
+    ).toBe(30);
+  });
+});

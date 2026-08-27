@@ -1,0 +1,61 @@
+export interface StatusReportFields {
+  provider: string;
+  model: string;
+  /** anthropic → undefined (hosted API); openai-compatible → the configured baseURL. */
+  baseURL: string | undefined;
+  permissionMode: string;
+  /** Absolute path the transcript is written to, or null when the session is ephemeral. */
+  transcriptPath: string | null;
+  retentionDays: number | undefined;
+  autoUpdate: boolean | undefined;
+  mcpServers: string[];
+  sessionId: string;
+  messageCount: number;
+  contextUsedPercent: number | undefined;
+  cwd: string;
+}
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]);
+
+/** Human description of where conversation data is sent, and whether that leaves the machine. */
+export function describeEndpoint(provider: string, baseURL: string | undefined): string {
+  if (provider === "anthropic") {
+    return "https://api.anthropic.com — hosted (conversation data leaves this machine)";
+  }
+  if (!baseURL) return "(unknown)";
+  let host = baseURL;
+  try {
+    host = new URL(baseURL).hostname;
+  } catch {
+    // fall back to the raw string
+  }
+  const local = LOCAL_HOSTS.has(host);
+  return `${baseURL} — ${local ? "local (nothing leaves this machine)" : "remote (conversation data leaves this machine)"}`;
+}
+
+export function formatStatusReport(f: StatusReportFields): string {
+  const lines = [
+    "Session status",
+    `  model:        ${f.provider} / ${f.model}`,
+    `  endpoint:     ${describeEndpoint(f.provider, f.baseURL)}`,
+    `  permissions:  ${f.permissionMode}`,
+    "  secret files: read/write of .env, keys, .ssh/… always prompts for approval",
+    `  transcript:   ${
+      f.transcriptPath ? `saved → ${f.transcriptPath}` : "ephemeral — nothing written to disk"
+    }`,
+    `  retention:    ${
+      f.retentionDays
+        ? `prune transcripts/plans after ${f.retentionDays} days`
+        : "kept indefinitely"
+    }`,
+    `  auto-update:  ${
+      f.autoUpdate === undefined ? "not set" : f.autoUpdate ? "on" : "notify only"
+    } (checks npm on startup)`,
+    `  mcp servers:  ${f.mcpServers.length > 0 ? f.mcpServers.join(", ") : "none"}`,
+    `  cwd:          ${f.cwd}`,
+    `  session:      ${f.sessionId} · ${f.messageCount} message(s)${
+      f.contextUsedPercent === undefined ? "" : ` · context ~${f.contextUsedPercent}%`
+    }`,
+  ];
+  return lines.join("\n");
+}

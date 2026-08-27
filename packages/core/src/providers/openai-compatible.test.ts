@@ -34,4 +34,8 @@ describe("buildOpenAIRequestBody", () => {
     expect(body.max_tokens).toBe(100);
     expect(body.stream).toBe(true);
   });
+
+  it("requests a usage chunk in the stream", () => {
+    expect(buildOpenAIRequestBody(baseRequest).stream_options).toEqual({ include_usage: true });
+  });
 });

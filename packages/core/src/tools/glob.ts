@@ -1,11 +1,20 @@
 import { glob } from "glob";
+import { SECRET_IGNORE_GLOBS } from "../permissions/secret-paths.js";
 import { type ToolDefinition, textResult } from "./types.js";
 
 interface GlobInput {
   pattern: string;
 }
 
-const IGNORE_PATTERNS = ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/coverage/**"];
+const IGNORE_PATTERNS = [
+  "**/node_modules/**",
+  "**/.git/**",
+  "**/dist/**",
+  "**/coverage/**",
+  // Keep a broad search from surfacing credentials/keys — read_file can still fetch one
+  // explicitly (which prompts for approval).
+  ...SECRET_IGNORE_GLOBS,
+];
 const MAX_RESULTS = 500;
 
 export const globTool: ToolDefinition<GlobInput> = {

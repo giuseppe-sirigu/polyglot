@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { PermissionDecision, PermissionGate, PermissionRequest } from "./gate.js";
 import { matchesAny } from "./rule-matcher.js";
+import { matchesSecretPath } from "./secret-paths.js";
 
 /** True if a tool's `path` argument, once resolved against cwd, points outside cwd. Tools
  * without a string `path` field (bash, web_fetch, glob's pattern) are left alone — this is
@@ -13,6 +14,17 @@ function targetsOutsideCwd(request: PermissionRequest): boolean {
   const target = isAbsolute(path) ? path : resolve(request.cwd, path);
   const rel = relative(request.cwd, target);
   return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+}
+
+/** True if a tool's `path` argument points at something that typically holds credentials or
+ * private keys (a `.env`, a `*.pem`, anything under `.ssh/`, …). Same field-scoping as
+ * targetsOutsideCwd() — the file-path tools only. */
+function targetsSecretPath(request: PermissionRequest): boolean {
+  const input = request.input as Record<string, unknown> | undefined;
+  const path = input && typeof input.path === "string" ? input.path : null;
+  if (!path) return false;
+  const target = isAbsolute(path) ? path : resolve(request.cwd, path);
+  return matchesSecretPath(target);
 }
 
 export type PermissionMode = "manual" | "auto" | "plan";
@@ -85,6 +97,23 @@ export class PolicyGate implements PermissionGate {
       return this.askUser(
         request,
         `${request.toolName} targets a path outside the working directory (${request.cwd}).`,
+      );
+    }
+
+    // A credentials/key file always needs a human's eyes on it too — reading one pulls its
+    // contents into the model's context (and on to the provider), so the "reads within cwd
+    // never prompt" fast path below must not apply here.
+    if (targetsSecretPath(request)) {
+      if (!this.onAskUser) {
+        return {
+          decision: "deny",
+          reason:
+            "target looks like a credentials/key file and no interactive prompt is configured",
+        };
+      }
+      return this.askUser(
+        request,
+        `${request.toolName} targets what looks like a secret file (credentials or a private key).`,
       );
     }
 

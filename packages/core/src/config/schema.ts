@@ -38,6 +38,13 @@ export const SettingsSchema = z.object({
     })
     .default({}),
   mcpServers: z.record(McpServerConfigSchema).default({}),
+  /** When false, nothing about a conversation is written to `~/.polyglot/` — no session
+   * transcript, no usage line, no saved plan. `--resume` within the same process still works;
+   * once it exits there is nothing to resume. Default true (see loader.ts). */
+  persistTranscripts: z.boolean().optional(),
+  /** When set, session transcripts and saved plans older than this many days are deleted on
+   * startup. Unset = kept indefinitely (the historical behavior). */
+  retentionDays: z.number().int().positive().optional(),
   /** Undefined means "never asked" — the CLI shows a one-time consent prompt
    * in that case. true/false is the user's stored answer, applied silently
    * on every future run. Lives only in the global settings file, never

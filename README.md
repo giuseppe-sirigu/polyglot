@@ -60,6 +60,26 @@ export ANTHROPIC_API_KEY=sk-ant-...
 node packages/cli/dist/main.js
 ```
 
+### Non-interactive / scripting mode (`-p`)
+
+Run a single prompt, print the answer to stdout, and exit - no TUI:
+
+```bash
+polyglot -p "explain what packages/core/src/agent/loop.ts does"
+echo "summarize the README" | polyglot -p          # prompt from stdin
+polyglot -p --output-format json "list the tools"  # machine-readable envelope
+```
+
+- `--output-format text` (default) streams the assistant's reply to stdout; tool
+  activity goes to stderr, so piped stdout stays clean. `--output-format json`
+  emits a single object instead: `{ "result", "session_id", "is_error", "stop_reason" }`.
+- The session id is written to stderr (`session: <id>`) - or the `session_id`
+  field in JSON - so runs can be chained: `polyglot --resume <id> -p "…"`.
+- There is no TTY to show approval prompts, so any write/execute/network tool
+  that would need approval is denied and the model is told so. For automation,
+  either set `permissions.mode` to `auto` (or pass `--permission-mode auto`), add
+  `allow` rules, or pass `--allow-all` to run every tool without prompting.
+
 ### Using `settings.json` instead of env vars
 
 Create `.polyglot/settings.json` in a project (or `~/.polyglot/settings.json` globally):
@@ -74,6 +94,8 @@ Create `.polyglot/settings.json` in a project (or `~/.polyglot/settings.json` gl
     "allow": [],
     "deny": ["bash:rm -rf *"]
   },
+  "persistTranscripts": true,
+  "retentionDays": 30,
   "mcpServers": {
     "filesystem": {
       "command": "npx",
@@ -83,7 +105,7 @@ Create `.polyglot/settings.json` in a project (or `~/.polyglot/settings.json` gl
 }
 ```
 
-`mcpServers` is optional - omit it entirely if you don't need an MCP server yet. If a configured server fails to start (e.g. the directory above doesn't exist), Polyglot logs the error and continues without it rather than blocking startup; the rest of the CLI still works normally.
+`persistTranscripts` (default `true`) and `retentionDays` (default: keep forever) control on-disk conversation data - see [Data handling](#data-handling). `mcpServers` is optional - omit it entirely if you don't need an MCP server yet. If a configured server fails to start (e.g. the directory above doesn't exist), Polyglot logs the error and continues without it rather than blocking startup; the rest of the CLI still works normally.
 
 ### Structured output (experimental, `openai-compatible` only)
 
@@ -143,9 +165,10 @@ Polyglot's terminal frontend is a full TUI (built with [Ink](https://github.com/
 
 - Type a message and press enter to chat.
 - Type `/` to see a live-filtering popup of available commands - keep typing to narrow it, **↑↓** to move, **Tab** to fill in the highlighted command without running it. **Enter** runs the highlighted command immediately, except for one that needs more typed after it (like `/rename <name>`) - there it fills the input instead, same as Tab, so you get a chance to type the argument first. It disappears as soon as you type a space or newline (you've moved on to an argument, e.g. `/model qwen3-coder`).
-- You can keep typing and submitting while a turn is already running - each message queues (shown dimmed above the input box, and as a count next to "working…" in the status area) and runs automatically, in order, once the current one finishes. Nothing you type is ever blocked or dropped.
+- You can keep typing and submitting while a turn is already running - each message queues (shown dimmed above the input box, and as a count next to "working…" in the status area) and runs automatically, in order, once the current one finishes. Nothing you type is ever blocked or dropped. Pressing **Esc** to stop the turn keeps the queue and runs it next; pressing **Esc** again while those queued messages are running cancels them.
 - **Shift+Tab** - cycle permission mode (`manual` → `auto` → `plan` → …) mid-session. The status bar at the bottom always shows the current mode. (Not Ctrl+Tab - that combination is intercepted by most terminal emulators for tab-switching and never reaches the program.)
-- **Esc** - stop the turn currently in progress (model call and/or a running tool) without exiting the app. Also discards anything currently queued (see above) - it's an explicit stop, not a "run everything anyway" pause.
+- **Esc** - stop the turn currently in progress (model call and/or a running tool) without exiting the app. Anything queued while it ran is kept and runs next; press **Esc** again while those queued messages are running to cancel them. (A rejected plan or an approval-prompt "Comment" still discards the queue - those supersede whatever was lined up.)
+- `/status` - print the current posture: model and endpoint (and whether it's local), permission mode, transcript persistence, retention, MCP servers, context usage. Read-only.
 - `/model` / `/model <name>` - open a picker to switch, or switch directly by name - see [Multiple models](#multiple-models-model) above.
 - `/rename <name>` - give the current session a name (shown in the status bar and in `/resume`'s picker instead of a raw session ID). Session names are separate from any file/branch naming - purely a label to help you find it again later.
 - `/resume` - pick a previous session from an **↑↓**-navigable list (most recently updated first, current session excluded, capped at the 15 most recent) and switch to it in place, replacing the visible transcript with that session's own history - re-rendered from its saved messages, tool calls and results included, not just a blank screen with a note that it resumed. If that session was on a model no longer in your `models[]`, it stays on whichever model is currently active instead and says so.
@@ -153,9 +176,12 @@ Polyglot's terminal frontend is a full TUI (built with [Ink](https://github.com/
 - `/reset` or `/newsession` - start a fresh session in the same terminal (clears the visible transcript and conversation history) without exiting. The prior session's transcript is untouched on disk and remains resumable via `/resume` or `--resume`; the new session keeps whichever model was currently active.
 - `/exit` or `/quit` - exit cleanly.
 - `--resume [session-id]` - resume the most recent session, or a specific one by ID, from the command line (`polyglot --resume`, or `polyglot --resume <id>`) - same transcript restoration as `/resume` above. Sessions are persisted as JSONL under `~/.polyglot/sessions/`.
+- `-p` / `--print` - non-interactive mode: run one prompt and exit (see [Non-interactive / scripting mode](#non-interactive--scripting-mode--p) above). `--output-format text|json`, `--allow-all`, and `--permission-mode manual|auto|plan` apply in this mode.
+- `--no-persist` - ephemeral session: write nothing to `~/.polyglot/` (see [Data handling](#data-handling)). Works in both interactive and `-p` mode.
+- `-h` / `--help`, `-v` / `--version` - print help or the version and exit.
 - Ctrl+C exits immediately.
 
-The status bar also shows a rough **context** indicator (`context: NN%`) - an estimate of how much of the model's context window the current conversation is using (turns yellow past 75%, red past 90%), the same heuristic `/compact` and the automatic-compaction trigger already use internally. It's a token-count estimate (~4 chars/token), not an exact count from the provider.
+The status bar also shows a **context** indicator (`context: NN%`) - how much of the model's context window the current conversation is using (turns yellow past 75%, red past 90%), the same figure `/compact` and the automatic-compaction trigger use internally. After the first turn it's the provider's own input-token count from the last response (which also includes the system prompt and tool definitions); before any turn, and right after `/compact`, it falls back to a rough `~4 chars/token` estimate over the message text. OpenAI-compatible servers that don't return usage on streamed responses stay on the estimate.
 
 ## Permission modes
 
@@ -169,13 +195,39 @@ Set via `permissions.mode` in `settings.json` or `POLYGLOT_PERMISSION_MODE`:
 
 `allow`/`deny` rules are strings like `"read_file"` (matches the tool regardless of arguments) or `"bash:git *"` (matches only when the tool's primary argument - `command` for bash, `path` for file tools, `url` for `web_fetch` - matches the glob pattern).
 
+Two paths always prompt regardless of mode (and are denied outright in `-p` mode without `--allow-all`): a file **outside the working directory**, and one that **looks like a credentials or key file** - `.env`/`.env.*`, `*.pem`/`*.key`/`*.p12`, `id_rsa` and friends, `.npmrc`, `.netrc`, anything under `.ssh/`/`.aws/`/`secrets/`, etc. `glob` and `grep` also skip those files entirely so an ordinary search never pulls a secret into context (`read_file` can still fetch one explicitly - which prompts). An explicit `allow` rule (e.g. `"read_file:**/.env"`) overrides the prompt; `bash` is not covered by this (no path argument), so `bash: cat .env` still follows the plain mode rules.
+
 Both the tool-approval and plan-approval prompts are a **↑↓**-navigable list (Enter to select) with direct letter shortcuts (`y`/`a`/`n`) alongside it, plus a **Comment** option (`c`): instead of a plain yes/no, type free text explaining what you'd rather it do - it stops the current action and immediately sends what you typed as your next message, so you can redirect without a separate deny-then-retype step. Esc denies outright (or, while typing a comment, backs out of it).
 
 ## Built-in tools
 
 `read_file`, `write_file`, `edit_file` (exact-match search/replace, fails closed if the match isn't unique), `bash`, `grep`, `glob`, `web_fetch`, plus `task` (delegate a sub-task to a nested sub-agent - see below) and, only in plan mode, `exit_plan_mode`.
 
-Every plan the model proposes via `exit_plan_mode` is also saved to `~/.polyglot/plans/<timestamp>-<session-id>.md`, independent of whether you approve or reject it - a durable record of what was proposed, the same role Claude Code's own `~/.claude/plans` serves.
+Every plan the model proposes via `exit_plan_mode` is also saved to `~/.polyglot/plans/<timestamp>-<session-id>.md`, independent of whether you approve or reject it - a durable record of what was proposed, the same role Claude Code's own `~/.claude/plans` serves. (Not written when the session is ephemeral - see [Data handling](#data-handling).)
+
+## Data handling
+
+Where conversation data goes:
+
+- **The model provider you configure, and nothing else.** With `provider: openai-compatible` pointed at a local server (Ollama, vLLM, LM Studio, llama.cpp), prompts and tool output never leave the machine. With `provider: anthropic`, or an `openai-compatible` `baseURL` on a remote host, the conversation goes there. `/status` shows the active endpoint and flags whether it's local.
+- The only other outbound request is a version check against the npm registry on startup (it sends nothing about your session). It still runs when `autoUpdate` is `false`. To stay fully offline, block the registry host or run without network access - the CLI degrades gracefully.
+
+What's written to disk, under `~/.polyglot/`:
+
+| Path | Contents |
+|---|---|
+| `sessions/<id>.jsonl` | Full transcript - every user message, assistant reply, and tool result, in plaintext. |
+| `plans/*.md` | Every plan proposed via `exit_plan_mode`. |
+| `settings.json` | Your config (may contain an `apiKey`). |
+
+Controls (set once in `settings.json` / env / a launch flag - not toggleable mid-session):
+
+- **`persistTranscripts: false`** (or `POLYGLOT_NO_PERSIST=1`, or `--no-persist`) - ephemeral session: nothing is written to `sessions/` or `plans/`. `--resume` within the same process still works; once it exits there's nothing to resume.
+- **`retentionDays: <n>`** (or `POLYGLOT_RETENTION_DAYS`) - on startup, delete transcripts and plans older than `n` days. Unset = kept indefinitely.
+
+There is deliberately **no at-rest encryption** of these files: a key stored on the same disk adds little against an attacker who can already read your home directory (where your API key and SSH keys also live), and it breaks `cat`/`grep`/`--resume`. For a regulated setup the effective controls are full-disk encryption + a local model + `persistTranscripts: false` or a short `retentionDays`.
+
+Run **`/status`** any time to see the current posture - endpoint, permission mode, persistence, retention.
 
 ## MCP servers
 

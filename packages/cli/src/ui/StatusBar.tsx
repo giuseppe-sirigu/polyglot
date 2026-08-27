@@ -11,7 +11,7 @@ const MODE_LABEL: Record<PermissionMode, string> = {
 export interface StatusBarProps {
   mode: PermissionMode;
   model: string;
-  /** 0-100, remaining-context-free heuristic (see estimateSessionTokens) — undefined hides the
+  /** 0-100 share of the model's context window (see sessionContextTokens) — undefined hides the
    * segment entirely rather than showing a misleading 0%. */
   contextUsedPercent: number | undefined;
   sessionLabel: string | undefined;

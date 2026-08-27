@@ -49,8 +49,9 @@ export function InputBar({ value, onChange, onSubmit, disabled, queuedCount }: I
       </Box>
       {disabled ? (
         <Text dimColor>
-          working… (Esc to stop)
-          {queuedCount > 0 ? ` · ${queuedCount} queued` : " · type to queue a message"}
+          {queuedCount > 0
+            ? `working… (Esc stops, then runs queue) · ${queuedCount} queued`
+            : "working… (Esc to stop) · type to queue a message"}
         </Text>
       ) : null}
     </Box>

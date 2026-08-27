@@ -124,6 +124,18 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
         if (event.type === "message_stop") {
           stopReason = event.stopReason;
         }
+        if (event.type === "usage") {
+          onEvent({
+            type: "usage",
+            inputTokens: event.inputTokens,
+            outputTokens: event.outputTokens,
+          });
+          // Providers may emit an interim usage with inputTokens: 0 before the final one — only
+          // the real prompt-size count is worth recording as the session's context size.
+          if (event.inputTokens > 0) {
+            session.lastContextTokens = event.inputTokens;
+          }
+        }
       }
     } catch (err) {
       onEvent({ type: "turn_end", stopReason: "error" });

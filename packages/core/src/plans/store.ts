@@ -1,9 +1,38 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+const DAY_MS = 86_400_000;
+
 export function plansDir(): string {
   return join(homedir(), ".polyglot", "plans");
+}
+
+/** Deletes saved plan files older than `maxAgeDays`. Best-effort; returns the count removed. */
+export async function prunePlans(maxAgeDays: number): Promise<number> {
+  if (!(maxAgeDays > 0)) return 0;
+  const dir = plansDir();
+  let files: string[];
+  try {
+    files = (await readdir(dir)).filter((f) => f.endsWith(".md"));
+  } catch {
+    return 0;
+  }
+  const cutoff = Date.now() - maxAgeDays * DAY_MS;
+  let removed = 0;
+  for (const file of files) {
+    const full = join(dir, file);
+    try {
+      const { mtimeMs } = await stat(full);
+      if (mtimeMs < cutoff) {
+        await rm(full, { force: true });
+        removed++;
+      }
+    } catch {
+      // skip this file
+    }
+  }
+  return removed;
 }
 
 export interface PersistedPlan {

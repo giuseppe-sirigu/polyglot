@@ -21,7 +21,6 @@ import {
   createProviderAdapter,
   createSession,
   editFileTool,
-  estimateSessionTokens,
   findModelOption,
   getAutoUpdatePreference,
   globTool,
@@ -32,10 +31,14 @@ import {
   persistMessage,
   persistSessionHeader,
   persistSessionRename,
+  persistSessionUsage,
+  prunePlans,
+  pruneSessions,
   readFileTool,
   resolveEngineConfigForModel,
   runAgentTurn,
   runSelfUpdate,
+  sessionContextTokens,
   setAutoUpdatePreference,
   shouldCompact,
   webFetchTool,
@@ -57,6 +60,7 @@ import { StatusBar } from "./StatusBar.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { TranscriptLine } from "./TranscriptLine.js";
 import { renderMarkdown } from "./markdown.js";
+import { formatStatusReport } from "./statusReport.js";
 import { theme } from "./theme.js";
 import { reconstructTranscript } from "./transcript.js";
 import type { DisplayItem, DistributiveOmit, LiveTurnItem, NewDisplayItem } from "./types.js";
@@ -115,6 +119,10 @@ export function App({
   const [messageQueue, setMessageQueue] = useState<{ id: string; text: string }[]>([]);
   const messageQueueRef = useRef<{ id: string; text: string }[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Guards drainQueue() against reentrancy: an Esc interrupt kicks off a drain while the aborted
+  // turn's promise is still unwinding and will also try to drain once it does — whichever runs
+  // first processes the whole queue, the other becomes a no-op.
+  const drainingRef = useRef(false);
   const nextId = useRef(0);
   const startedRef = useRef(false);
   const [liveTurnItems, setLiveTurnItems] = useState<LiveTurnItem[]>([]);
@@ -266,6 +274,7 @@ export function App({
             setPlanRequest(plan);
           }),
         "manual",
+        resolved.persistTranscripts,
       ),
     );
     built.register(
@@ -361,40 +370,51 @@ export function App({
     // run once on startup — intentionally not re-checking on every render
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount; session.id is the initial session's, stable here
+  useEffect(() => {
+    const days = resolved.retentionDays;
+    if (!resolved.persistTranscripts || !days) return;
+    (async () => {
+      const [sessions, plans] = await Promise.all([
+        pruneSessions(days, session.id),
+        prunePlans(days),
+      ]);
+      const total = sessions + plans;
+      if (total > 0) {
+        pushItem({
+          kind: "system",
+          tone: "info",
+          text: `Pruned ${total} transcript/plan file(s) older than ${days} days (retention policy).`,
+        });
+      }
+    })();
+  }, []);
+
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
       exit();
       return;
     }
 
-    // Esc stops the in-progress turn (model call and/or tool execution) without exiting the
-    // app, as long as no modal prompt is currently claiming input focus — those handle Esc
-    // themselves (e.g. as "deny"/"reject").
-    if (
-      key.escape &&
-      isRunning &&
+    const noModal =
       !approvalRequest &&
       !planRequest &&
       !questionRequest &&
       !showUpdateConsent &&
       !resumeRequest &&
-      !modelRequest
-    ) {
-      hardStop("Stopped.");
+      !modelRequest;
+
+    // Esc stops the in-progress turn (model call and/or tool execution) without exiting the
+    // app, as long as no modal prompt is currently claiming input focus — those handle Esc
+    // themselves (e.g. as "deny"/"reject"). First Esc stops the turn and lets anything queued
+    // while it ran run next; a second Esc *while those queued messages are running* (drainingRef)
+    // stops that too and drops the rest of the queue.
+    if (key.escape && isRunning && noModal) {
+      hardStop("Stopped.", { resumeQueue: !drainingRef.current });
       return;
     }
 
-    if (
-      key.tab &&
-      key.shift &&
-      !approvalRequest &&
-      !planRequest &&
-      !questionRequest &&
-      !showUpdateConsent &&
-      !resumeRequest &&
-      !modelRequest &&
-      !isRunning
-    ) {
+    if (key.tab && key.shift && noModal && !isRunning) {
       const next = MODE_ORDER[(MODE_ORDER.indexOf(mode) + 1) % MODE_ORDER.length] as PermissionMode;
       gate.setMode(next);
       setMode(next);
@@ -441,18 +461,57 @@ export function App({
    * ran, immediately runs the next one the same way, and so on until the queue is empty. This
    * wraps runTurnBody() rather than living inside it because a slash command (most of
    * runTurnBody's branches) returns long before reaching runTurnBody's own end — draining needs
-   * to happen after *every* exit path, not just the one real agent turn takes. */
+   * to happen after *every* exit path, not just the one a real agent turn takes. */
   async function runTurn(value: string) {
     await runTurnBody(value);
-    const next = dequeueMessage();
-    if (next !== undefined) {
-      await runTurn(next);
+    await drainQueue();
+  }
+
+  /** Runs queued messages one at a time, in order, until the queue is empty. Safe to call from
+   * more than one place concurrently (see drainingRef) — used both by runTurn() after a normal
+   * turn and by hardStop() after an Esc interrupt. */
+  async function drainQueue() {
+    if (drainingRef.current) return;
+    drainingRef.current = true;
+    try {
+      let next = dequeueMessage();
+      while (next !== undefined) {
+        await runTurnBody(next);
+        next = dequeueMessage();
+      }
+    } finally {
+      drainingRef.current = false;
     }
   }
 
   async function runTurnBody(value: string) {
     if (value === "/exit" || value === "/quit") {
       exit();
+      return;
+    }
+
+    if (value === "/status") {
+      pushItem({ kind: "user", text: value });
+      pushItem({
+        kind: "system",
+        tone: "info",
+        text: formatStatusReport({
+          provider: activeModel.provider,
+          model: activeModel.model,
+          baseURL: activeModel.provider === "anthropic" ? undefined : resolved.engine.baseURL,
+          permissionMode: mode,
+          transcriptPath: resolved.persistTranscripts
+            ? `~/.polyglot/sessions/${session.id}.jsonl`
+            : null,
+          retentionDays: resolved.retentionDays,
+          autoUpdate: getAutoUpdatePreference(),
+          mcpServers: Object.keys(resolved.mcpServers),
+          sessionId: session.id,
+          messageCount: session.messages.length,
+          contextUsedPercent,
+          cwd: session.cwd,
+        }),
+      });
       return;
     }
 
@@ -473,7 +532,7 @@ export function App({
         provider: activeModel.provider,
         model: activeModel.model,
       });
-      await persistSessionHeader(newSession);
+      if (resolved.persistTranscripts) await persistSessionHeader(newSession);
       resetTranscriptUI();
       setSession(newSession);
       pushItem({ kind: "system", tone: "info", text: `Started a new session (${newSession.id}).` });
@@ -488,7 +547,7 @@ export function App({
         return;
       }
       session.name = newName;
-      await persistSessionRename(session.id, newName);
+      if (resolved.persistTranscripts) await persistSessionRename(session.id, newName);
       pushItem({ kind: "system", tone: "info", text: `Renamed session to "${newName}".` });
       return;
     }
@@ -563,7 +622,9 @@ export function App({
         tools,
         gate,
         signal: controller.signal,
-        onMessage: (message) => persistMessage(session.id, message),
+        onMessage: resolved.persistTranscripts
+          ? (message) => persistMessage(session.id, message)
+          : undefined,
         onEvent: (event) => {
           if (isStale()) return;
           if (event.type === "text_delta") {
@@ -597,6 +658,12 @@ export function App({
           }
           if (event.type === "tool_parse_error") {
             pushLiveItem({ kind: "tool_parse_error", message: event.message });
+          }
+          if (event.type === "usage" && event.inputTokens > 0 && resolved.persistTranscripts) {
+            // runAgentTurn already updated session.lastContextTokens in memory (drives the
+            // status-bar indicator on the next render); persist it so `--resume` starts with an
+            // accurate figure too.
+            void persistSessionUsage(session.id, event.inputTokens);
           }
           if (event.type === "agent_stop" && event.reason === "unreliable_model") {
             pushItem({
@@ -641,8 +708,12 @@ export function App({
    * rejected plan. Does NOT wait for the in-flight turn to actually acknowledge the abort: a
    * hung child process or a non-cooperative stream could otherwise leave the UI locked forever
    * with no way out. Any state that promise's callbacks would still touch is guarded by
-   * isStale() inside handleSubmit, so a late/never-arriving resolution is a safe no-op. */
-  function hardStop(message: string) {
+   * isStale() inside handleSubmit, so a late/never-arriving resolution is a safe no-op.
+   *
+   * With `resumeQueue`, anything queued while the turn ran is kept and drained right after (Esc:
+   * stop this turn, then carry on with what I lined up). Without it, the queue is discarded — a
+   * rejected plan or a redirect comment supersedes whatever was queued as a reaction to it. */
+  function hardStop(message: string, opts?: { resumeQueue?: boolean }) {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     cancelStreamFlush();
@@ -655,14 +726,18 @@ export function App({
       flushLiveItems();
     }
     setIsRunning(false);
-    // An explicit stop discards anything queued too, rather than silently firing it right after
-    // — those messages may well have been reactions to whatever just got interrupted.
-    const droppedCount = messageQueueRef.current.length;
+
+    const queued = messageQueueRef.current.length;
+    if (opts?.resumeQueue && queued > 0) {
+      const note = ` (running ${queued} queued message${queued === 1 ? "" : "s"} — Esc again to cancel)`;
+      pushItem({ kind: "system", tone: "info", text: `${message}${note}` });
+      void drainQueue();
+      return;
+    }
+
     clearMessageQueue();
     const queueNote =
-      droppedCount > 0
-        ? ` (${droppedCount} queued message${droppedCount === 1 ? "" : "s"} discarded)`
-        : "";
+      queued > 0 ? ` (${queued} queued message${queued === 1 ? "" : "s"} discarded)` : "";
     pushItem({ kind: "system", tone: "info", text: `${message}${queueNote}` });
   }
 
@@ -817,14 +892,14 @@ export function App({
       ? Math.max(0, stdout.rows - HEADER_LINE_COUNT - 1)
       : undefined;
 
-  // Cheap enough (a string-length sum over the session's messages) to just recompute on every
-  // render rather than memoize — and it needs to reflect `session.messages`, which is mutated
-  // in place rather than through setState, so a memo keyed on it wouldn't reliably invalidate
-  // anyway.
+  // Prefers the provider-measured input-token count from the last turn (set on `session` by
+  // runAgentTurn, and mutated in place like `session.messages` — a memo keyed on it wouldn't
+  // reliably invalidate, and it's cheap to recompute every render anyway), falling back to the
+  // char-heuristic estimate before the first turn and right after compaction.
   const maxContextTokens = activeAdapter.capabilities.maxContextTokens;
   const contextUsedPercent =
     maxContextTokens > 0
-      ? Math.min(100, Math.round((estimateSessionTokens(session) / maxContextTokens) * 100))
+      ? Math.min(100, Math.round((sessionContextTokens(session) / maxContextTokens) * 100))
       : undefined;
 
   return (

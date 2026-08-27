@@ -20,12 +20,19 @@ export {
   findModelOption,
 } from "./config/model-options.js";
 export type { ModelOption } from "./config/model-options.js";
-export { persistPlan, plansDir } from "./plans/store.js";
+export { persistPlan, plansDir, prunePlans } from "./plans/store.js";
 export type { PersistedPlan } from "./plans/store.js";
 export { AllowAllGate } from "./permissions/gate.js";
 export type { PermissionGate, PermissionRequest, PermissionDecision } from "./permissions/gate.js";
 export { PolicyGate } from "./permissions/policy.js";
 export type { PermissionMode, ApprovalResponse, PolicyGateOptions } from "./permissions/policy.js";
+export {
+  matchesSecretPath,
+  isSecretFilename,
+  SECRET_FILE_GLOBS,
+  SECRET_DIR_NAMES,
+  SECRET_IGNORE_GLOBS,
+} from "./permissions/secret-paths.js";
 export { connectAllMcpServers } from "./mcp/manager.js";
 export type { McpConnectResult } from "./mcp/manager.js";
 export { createProviderAdapter } from "./providers/registry.js";
@@ -36,6 +43,8 @@ export {
   persistSessionHeader,
   persistMessage,
   persistSessionRename,
+  persistSessionUsage,
+  pruneSessions,
   loadSession,
   listSessions,
 } from "./session/store.js";
@@ -74,6 +83,7 @@ export type { ResolvedToolPath } from "./tools/resolve-path.js";
 export {
   estimateTokens,
   estimateSessionTokens,
+  sessionContextTokens,
   shouldCompact,
   compactSession,
 } from "./session/context-manager.js";
