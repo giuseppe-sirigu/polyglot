@@ -111,8 +111,8 @@ From then on, every release goes through CI with no credentials on the runner.
    ```
 5. The `Release` workflow re-runs build/typecheck/lint/test, checks the tag matches
    the package version, packs the tarball with pnpm (which resolves the `workspace:`
-   devDependency), and publishes it with `npm publish` — authenticating via OIDC,
-   with provenance. No secret on the runner.
+   devDependency), and publishes it with `npm publish --provenance` — authenticating
+   via OIDC, with a signed provenance attestation. No secret on the runner.
 
 ## Versioning
 

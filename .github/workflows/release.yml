@@ -6,9 +6,9 @@ name: Release
 # then publishes `@usepolyglot/cli` to npm.
 #
 # Auth is npm trusted publishing (OIDC): no token, no secret. It needs a Trusted
-# Publisher configured on the npmjs.com package page pointing at
-# `giuseppe-sirigu/polyglot` + this workflow — which means the package must already
-# exist, so the *first* publish is done by hand (see CONTRIBUTING.md → Releasing).
+# Publisher configured on the npmjs.com package page (repo `giuseppe-sirigu/polyglot`,
+# workflow `release.yml`), which means the package must already exist — the *first*
+# publish is done by hand (see CONTRIBUTING.md → Releasing).
 #
 # pnpm packs the tarball (it resolves the `workspace:` devDependency); npm publishes
 # that tarball as-is (preserving the executable bit on dist/main.js, so the `bin`
@@ -25,6 +25,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Gated by the `release` environment: a manual approval, and `v*` tags only.
+    # This name must match the "Environment" field in the npm Trusted Publisher config
+    # (or both must be blank) — a mismatch makes the OIDC exchange fail.
+    environment: release
     steps:
       - uses: actions/checkout@v7
 
@@ -32,15 +36,14 @@ jobs:
 
       # No `registry-url:` — it makes setup-node write an .npmrc with
       # `_authToken=${NODE_AUTH_TOKEN}`, and with no token that placeholder blocks the
-      # OIDC fallback. Node 24 ships npm 11.x; we still pin the newest npm explicitly
-      # because trusted publishing needs >= 11.5.1.
+      # OIDC fallback.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
 
-      - name: Pin npm
-        run: |
+      # Trusted publishing needs npm >= 11.5.1.
+      - run: |
           npm install -g npm@latest
           hash -r
           npm --version
@@ -66,12 +69,8 @@ jobs:
         run: pnpm --filter @usepolyglot/cli pack --pack-destination "$RUNNER_TEMP"
 
       - name: Publish to npm (OIDC trusted publishing)
-        run: |
-          npm --version
-          echo "id-token URL present: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
-          npm publish "$RUNNER_TEMP"/usepolyglot-cli-*.tgz --provenance --access public
+        run: npm publish "$RUNNER_TEMP"/usepolyglot-cli-*.tgz --provenance --access public
 
       - name: npm debug log (on failure)
         if: failure()
-        run: |
-          for f in ~/.npm/_logs/*.log; do echo "=== $f ==="; cat "$f"; done
+        run: for f in ~/.npm/_logs/*.log; do echo "=== $f ==="; cat "$f"; done
