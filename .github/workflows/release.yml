@@ -10,10 +10,9 @@ name: Release
 # `giuseppe-sirigu/polyglot` + this workflow — which means the package must already
 # exist, so the *first* publish is done by hand (see CONTRIBUTING.md → Releasing).
 #
-# pnpm packs the package (it resolves the `workspace:` devDependency); we unpack that
-# tarball and run `npm publish` from the resulting directory — npm's OIDC exchange only
-# kicks in for a directory publish, not `npm publish <file.tgz>`. (pnpm's own publish
-# doesn't do OIDC yet, hence the two-tool split.)
+# pnpm packs the tarball (it resolves the `workspace:` devDependency); npm publishes
+# that tarball as-is (preserving the executable bit on dist/main.js, so the `bin`
+# entry survives). pnpm's own publish doesn't do OIDC yet, hence the two-tool split.
 on:
   push:
     tags:
@@ -31,17 +30,19 @@ jobs:
 
       - uses: pnpm/action-setup@v6
 
-      # NB: do NOT set `registry-url` here. It makes setup-node write an .npmrc with
-      # `_authToken=${NODE_AUTH_TOKEN}`; with no token set that placeholder stays literal
-      # and npm tries (and fails) token auth instead of falling through to OIDC.
+      # No `registry-url:` — it makes setup-node write an .npmrc with
+      # `_authToken=${NODE_AUTH_TOKEN}`, and with no token that placeholder blocks the
+      # OIDC fallback. Node 24 ships npm 11.x; we still pin the newest npm explicitly
+      # because trusted publishing needs >= 11.5.1.
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
-      # Trusted publishing needs npm >= 11.5.1; Node 22 ships an older line.
-      - run: |
+      - name: Pin npm
+        run: |
           npm install -g npm@latest
+          hash -r
           npm --version
 
       - run: pnpm install --frozen-lockfile
@@ -61,13 +62,16 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
 
-      - name: "Pack & unpack (pnpm resolves the workspace: devDependency)"
-        run: |
-          pnpm --filter @usepolyglot/cli pack --pack-destination "$RUNNER_TEMP"
-          mkdir -p "$RUNNER_TEMP/pkg"
-          tar -xzf "$RUNNER_TEMP"/usepolyglot-cli-*.tgz -C "$RUNNER_TEMP/pkg" --strip-components=1
-          cat "$RUNNER_TEMP/pkg/package.json"
+      - name: "Pack (pnpm resolves the workspace: devDependency)"
+        run: pnpm --filter @usepolyglot/cli pack --pack-destination "$RUNNER_TEMP"
 
       - name: Publish to npm (OIDC trusted publishing)
-        working-directory: ${{ runner.temp }}/pkg
-        run: npm publish --provenance --access public
+        run: |
+          npm --version
+          echo "id-token URL present: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+          npm publish "$RUNNER_TEMP"/usepolyglot-cli-*.tgz --provenance --access public
+
+      - name: npm debug log (on failure)
+        if: failure()
+        run: |
+          for f in ~/.npm/_logs/*.log; do echo "=== $f ==="; cat "$f"; done
