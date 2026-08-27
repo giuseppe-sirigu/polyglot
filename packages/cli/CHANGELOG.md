@@ -1,5 +1,11 @@
 # @usepolyglot/cli
 
+## 0.1.1
+
+### Patch Changes
+
+- pnpm changeset
+
 ## 0.1.0
 
 Initial release.
