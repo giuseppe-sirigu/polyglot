@@ -72,20 +72,47 @@ Only `@usepolyglot/cli` is published — `@usepolyglot/core` is bundled into it 
 esbuild and is not a separate package. `packages/cli/package.json`'s `version` is the only one
 that matters; it's baked into the binary as `--version` and drives the auto-update check.
 
-Publishing is manual and tag-triggered — nothing publishes on merge to `main`:
+Publishing is manual and tag-triggered — nothing publishes on merge to `main`.
+
+### One-time setup: npm trusted publishing
+
+CI publishes with **npm trusted publishing (OIDC)** — no token, no repository secret.
+It needs a *Trusted Publisher* configured on the npm package, which requires the
+package to already exist, so:
+
+1. Authenticate the CLI once: `npm login` (uses the browser flow, so a security key /
+   2FA works). Check with `npm whoami`.
+2. Do the **first publish by hand**:
+   ```bash
+   pnpm install
+   pnpm publish:manual
+   ```
+   (`publish:manual` builds, `pnpm pack`s a tarball — which resolves the `workspace:`
+   devDependency — and `npm publish`es it, so the 2FA prompt is handled by npm.)
+3. Configure the Trusted Publisher on the **package page** (not account settings):
+   `npmjs.com/package/@usepolyglot/cli/access` → **Trusted Publisher → GitHub
+   Actions** → organization `giuseppe-sirigu`, repository `polyglot`, workflow
+   `release.yml`, environment blank. Then set **Publishing access** to require a
+   trusted publisher or 2FA.
+
+From then on, every release goes through CI with no credentials on the runner.
+
+### Cutting a release
 
 1. Merge the PRs you want in the release (each carrying its changeset).
 2. `pnpm changeset:version` — consumes the pending `.changeset/*.md`, bumps
    `packages/cli/package.json`, and updates `CHANGELOG.md`. Review the diff.
-3. Commit it (`chore: release vX.Y.Z`) and push to `main` (via PR).
+3. Commit it (`chore: release vX.Y.Z`) and get it onto `main` via PR.
 4. Tag that commit and push the tag:
    ```bash
+   git checkout main && git pull
    git tag v$(node -p "require('./packages/cli/package.json').version")
    git push origin --tags
    ```
-5. The `Release` workflow (`.github/workflows/release.yml`) re-runs build/typecheck/lint/test,
-   checks the tag matches the package version, and runs `changeset publish` to npm (with
-   provenance). It needs the `NPM_TOKEN` repository secret.
+5. The `Release` workflow re-runs build/typecheck/lint/test, checks the tag matches
+   the package version, packs the tarball with pnpm (which resolves the `workspace:`
+   devDependency), and publishes it with `npm publish` — authenticating via OIDC,
+   with provenance. No secret on the runner.
 
 ## Versioning
 

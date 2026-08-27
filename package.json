@@ -18,7 +18,7 @@
     "test:watch": "vitest",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "release": "pnpm build && changeset publish --no-git-tag"
+    "publish:manual": "pnpm build && d=$(mktemp -d) && pnpm --filter @usepolyglot/cli pack --pack-destination \"$d\" && npm publish \"$d\"/usepolyglot-cli-*.tgz --access public"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
