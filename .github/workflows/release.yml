@@ -29,11 +29,13 @@ jobs:
 
       - uses: pnpm/action-setup@v6
 
+      # NB: do NOT set `registry-url` here. It makes setup-node write an .npmrc with
+      # `_authToken=${NODE_AUTH_TOKEN}`; with no token set that placeholder stays literal
+      # and npm tries (and fails) token auth instead of falling through to OIDC.
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
-          registry-url: "https://registry.npmjs.org"
 
       # Trusted publishing needs npm >= 11.5.1; Node 22 ships an older line.
       - run: npm install -g npm@latest

@@ -5,6 +5,7 @@
 <h1 align="center">Polyglot</h1>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@usepolyglot/cli"><img src="https://img.shields.io/npm/v/@usepolyglot/cli?color=blue" alt="npm version" /></a>
   <a href="https://github.com/giuseppe-sirigu/polyglot/actions/workflows/ci.yml"><img src="https://github.com/giuseppe-sirigu/polyglot/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
   <a href="https://github.com/giuseppe-sirigu/polyglot/actions/workflows/codeql.yml"><img src="https://github.com/giuseppe-sirigu/polyglot/actions/workflows/codeql.yml/badge.svg" alt="CodeQL status" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--ALv2-blue" alt="License: FSL-1.1-ALv2" /></a>
