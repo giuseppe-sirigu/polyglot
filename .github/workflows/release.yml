@@ -10,8 +10,10 @@ name: Release
 # `giuseppe-sirigu/polyglot` + this workflow — which means the package must already
 # exist, so the *first* publish is done by hand (see CONTRIBUTING.md → Releasing).
 #
-# pnpm packs the tarball (it resolves the `workspace:` devDependency); the current
-# npm CLI publishes it (pnpm's own publish doesn't yet do OIDC).
+# pnpm packs the package (it resolves the `workspace:` devDependency); we unpack that
+# tarball and run `npm publish` from the resulting directory — npm's OIDC exchange only
+# kicks in for a directory publish, not `npm publish <file.tgz>`. (pnpm's own publish
+# doesn't do OIDC yet, hence the two-tool split.)
 on:
   push:
     tags:
@@ -38,7 +40,9 @@ jobs:
           cache: pnpm
 
       # Trusted publishing needs npm >= 11.5.1; Node 22 ships an older line.
-      - run: npm install -g npm@latest
+      - run: |
+          npm install -g npm@latest
+          npm --version
 
       - run: pnpm install --frozen-lockfile
 
@@ -57,8 +61,13 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
 
-      - name: "Pack (pnpm resolves the workspace: devDependency)"
-        run: pnpm --filter @usepolyglot/cli pack --pack-destination "$RUNNER_TEMP"
+      - name: "Pack & unpack (pnpm resolves the workspace: devDependency)"
+        run: |
+          pnpm --filter @usepolyglot/cli pack --pack-destination "$RUNNER_TEMP"
+          mkdir -p "$RUNNER_TEMP/pkg"
+          tar -xzf "$RUNNER_TEMP"/usepolyglot-cli-*.tgz -C "$RUNNER_TEMP/pkg" --strip-components=1
+          cat "$RUNNER_TEMP/pkg/package.json"
 
       - name: Publish to npm (OIDC trusted publishing)
-        run: npm publish "$RUNNER_TEMP"/usepolyglot-cli-*.tgz --provenance --access public
+        working-directory: ${{ runner.temp }}/pkg
+        run: npm publish --provenance --access public
