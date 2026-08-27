@@ -1,7 +1,8 @@
 import { Box, Text } from "ink";
 
-// Matches branding/logo.svg's five node colors, arranged the same way: orange at top,
-// teal/purple on the right (upper/lower), blue/green on the left (lower/upper).
+// Mirrors branding/logo.svg: a hexagon holding the ">_" prompt, ringed by five colored
+// nodes wired back to the center - orange at top, green/teal as the wide upper pair
+// (left/right), blue/purple as the lower pair (left/right).
 const NODE = {
   orange: "#F97316",
   teal: "#14B8A6",
@@ -10,25 +11,22 @@ const NODE = {
   green: "#22C55E",
 } as const;
 
-// Column math (0-indexed), so every diagonal actually terminates on a dot instead of just
-// trailing off into blank space: the bar row's inner brackets sit at col 4 ("┤") and col 9
-// ("├"). Going up, each row converges the /\ pair by 1 column per row until they meet at a
-// single point (the top dot). Going down, the same 1-column-per-row step diverges outward
-// instead, landing on two separate dots (blue/purple) rather than one.
-//
 // Plain ASCII "/" and "\" rather than the Unicode box-drawing diagonals (╱ ╲) - those aren't
 // guaranteed truly monospace in every terminal font, which is exactly what broke this the last
-// two times; ASCII slashes carry no such risk.
+// two times; ASCII slashes carry no such risk. Columns are hand-aligned so every diagonal
+// terminates on the hexagon border or a node dot.
 export function Logo() {
   return (
     <Box flexDirection="column">
       <Box>
-        <Text>{"      "}</Text>
+        <Text>{"          "}</Text>
         <Text color={NODE.orange}>●</Text>
       </Box>
-      <Text>{"     /  \\"}</Text>
-      <Text>{"    /    \\"}</Text>
+      <Text dimColor>{"          |"}</Text>
+      <Text dimColor>{"         /\\"}</Text>
+      <Text dimColor>{"        /  \\"}</Text>
       <Box>
+        <Text>{"   "}</Text>
         <Text color={NODE.green}>●</Text>
         <Text dimColor>{"───┤ "}</Text>
         <Text bold color="#F4F5F7">
@@ -37,12 +35,13 @@ export function Logo() {
         <Text dimColor>{" ├───"}</Text>
         <Text color={NODE.teal}>●</Text>
       </Box>
-      <Text>{"    \\    /"}</Text>
-      <Text>{"   \\      /"}</Text>
+      <Text dimColor>{"        \\  /"}</Text>
+      <Text dimColor>{"         \\/"}</Text>
+      <Text dimColor>{"       /    \\"}</Text>
       <Box>
-        <Text>{"  "}</Text>
+        <Text>{"      "}</Text>
         <Text color={NODE.blue}>●</Text>
-        <Text>{"        "}</Text>
+        <Text>{"      "}</Text>
         <Text color={NODE.purple}>●</Text>
       </Box>
     </Box>
