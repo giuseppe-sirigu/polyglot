@@ -25,7 +25,7 @@ export function buildOpenAIRequestBody(
     temperature: request.temperature,
     max_tokens: request.maxOutputTokens,
     stream: true,
-    // Ask the server to include a final usage chunk in the stream — without this most
+    // Ask the server to include a final usage chunk in the stream - without this most
     // OpenAI-compatible backends (llama.cpp, vLLM, LM Studio, Ollama) omit token counts from
     // streamed responses entirely. Servers that don't support it just ignore the field.
     stream_options: { include_usage: true },

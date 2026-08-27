@@ -6,7 +6,7 @@ function readReq(path: string): PermissionRequest {
   return { toolName: "read_file", category: "read", input: { path }, cwd: "/proj" };
 }
 
-describe("PolicyGate — secret files", () => {
+describe("PolicyGate - secret files", () => {
   it("prompts before reading a secret file even in auto mode", async () => {
     const onAskUser = vi.fn().mockResolvedValue("allow_once");
     const gate = new PolicyGate({ mode: "auto", onAskUser });
@@ -39,7 +39,7 @@ describe("PolicyGate — secret files", () => {
   });
 });
 
-describe("PolicyGate — plan mode", () => {
+describe("PolicyGate - plan mode", () => {
   const netReq: PermissionRequest = {
     toolName: "web_search",
     category: "network",

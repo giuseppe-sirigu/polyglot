@@ -8,10 +8,10 @@ export interface MultilineTextInputProps {
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
   /** Live `/`-command matches for the text currently being typed (InputBar computes these from
-   * `value`) — while non-empty, up/down/tab are reclaimed for navigating/accepting a suggestion
+   * `value`) - while non-empty, up/down/tab are reclaimed for navigating/accepting a suggestion
    * instead of their normal cursor-movement/no-op behavior. Accepting is done here (not by
    * InputBar pushing a new `value` down) because this component owns its text as internal,
-   * uncontrolled state (`stateRef`) — it only reads the `value` prop once, at mount, so nothing
+   * uncontrolled state (`stateRef`) - it only reads the `value` prop once, at mount, so nothing
    * external can inject text into it after that; only its own `apply()` can. */
   suggestions?: SlashCommand[];
   highlightedSuggestionIndex?: number;
@@ -19,16 +19,16 @@ export interface MultilineTextInputProps {
 }
 
 // Escape sequences a terminal sends for the literal Home/End keys, taken from Ink's own
-// parse-keypress.js keyName table — Ink's public useInput() never exposes home/end as flags,
+// parse-keypress.js keyName table - Ink's public useInput() never exposes home/end as flags,
 // so these are read directly off the raw input stream that useInput is itself built on.
 const HOME_SEQUENCES = ["\x1b[H", "\x1bOH", "\x1b[1~", "\x1b[7~"];
 const END_SEQUENCES = ["\x1b[F", "\x1bOF", "\x1b[4~", "\x1b[8~"];
 
 // Ink's parser (parse-keypress.js) maps the physical Backspace key's byte (0x7f, sent by
-// most terminals including tmux's "BSpace") to `key.name === 'delete'` — the same name it
+// most terminals including tmux's "BSpace") to `key.name === 'delete'` - the same name it
 // gives the physical Delete key's sequence (\x1b[3~ and rxvt/putty variants). `key.backspace`
 // only fires for the raw \b/\x08 byte, which almost no physical key actually sends. So Ink's
-// public delete/backspace flags cannot tell these two keys apart — read the raw bytes instead.
+// public delete/backspace flags cannot tell these two keys apart - read the raw bytes instead.
 const BACKSPACE_SEQUENCES = ["\x7f", "\b"];
 const FORWARD_DELETE_SEQUENCES = ["\x1b[3~", "\x1b[3$", "\x1b[3^"];
 
@@ -74,7 +74,7 @@ export function MultilineTextInput({
   onNavigateSuggestions,
 }: MultilineTextInputProps) {
   // Mutated synchronously (not via setState) so a burst of keypresses delivered within a
-  // single React batch — e.g. several escape sequences arriving in one stdin chunk — each see
+  // single React batch - e.g. several escape sequences arriving in one stdin chunk - each see
   // the previous keypress's result instead of racing on a stale render-time closure.
   const stateRef = useRef({ text: value, cursor: value.length });
   const [, bump] = useReducer((n: number) => n + 1, 0);
@@ -102,7 +102,7 @@ export function MultilineTextInput({
         onNavigateSuggestions?.(1);
         return;
       }
-      // Not key.shift too — Shift+Tab is the global permission-mode cycle handled in App.tsx,
+      // Not key.shift too - Shift+Tab is the global permission-mode cycle handled in App.tsx,
       // and Ink delivers every keypress to every active useInput() with no way to stop that, so
       // this must explicitly stay out of Shift+Tab's way rather than also firing alongside it.
       if (key.tab && !key.shift) {
@@ -111,8 +111,8 @@ export function MultilineTextInput({
         return;
       }
       // Enter accepts whichever suggestion is highlighted, same as Tab. For a command that
-      // takes an argument (e.g. "/rename"), that just fills it into the input — running it
-      // immediately would skip the chance to type the argument — so only run right away when
+      // takes an argument (e.g. "/rename"), that just fills it into the input - running it
+      // immediately would skip the chance to type the argument - so only run right away when
       // the command needs nothing more.
       if (key.return) {
         const chosen = suggestions[highlightedSuggestionIndex];
@@ -136,7 +136,7 @@ export function MultilineTextInput({
 
     // Alt+Enter arrives as the 2-byte sequence ESC+CR: Ink can't tell it apart from other
     // escape-prefixed input at the key-name level, so `key.return` stays false (a real Enter
-    // sets it true) while `input` collapses to a bare "\r" — that combination is what
+    // sets it true) while `input` collapses to a bare "\r" - that combination is what
     // distinguishes this case from everything else.
     if (input === "\r") {
       apply(`${text.slice(0, cursor)}\n${text.slice(cursor)}`, cursor + 1);
@@ -231,7 +231,7 @@ export function MultilineTextInput({
         // A single string with the cursor's styling embedded as raw ANSI (via chalk), not a
         // separate sibling <Text> for the cursor: when a long unwrapped line word-wraps inside
         // the bordered box, Ink's flexbox row layout doesn't correctly re-flow a *sibling*
-        // Text's position across that wrap — the cursor ends up floating at some arbitrary
+        // Text's position across that wrap - the cursor ends up floating at some arbitrary
         // column instead of tracking the actual wrapped text. One Text node's own content wraps
         // correctly, ANSI codes and all, because wrapping never needs to reason about sibling
         // layout at all.

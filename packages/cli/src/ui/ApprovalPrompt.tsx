@@ -8,7 +8,7 @@ import { theme } from "./theme.js";
 export interface ApprovalPromptProps {
   request: PermissionRequest;
   onRespond: (response: ApprovalResponse) => void;
-  /** Fires instead of onRespond when the user picks "Comment" and types something — the caller
+  /** Fires instead of onRespond when the user picks "Comment" and types something - the caller
    * is expected to treat the pending request as denied and feed the text back in as the user's
    * next message, rather than resolving it with a plain yes/no. */
   onComment: (text: string) => void;
@@ -29,7 +29,7 @@ const DEFAULT_CURSOR = OPTIONS.findIndex((o) => o.kind === "response" && o.respo
 export function ApprovalPrompt({ request, onRespond, onComment }: ApprovalPromptProps) {
   const [diff, setDiff] = useState<DiffPreview | null>(null);
   // Defaults to "Deny" so a bare Enter (no arrow navigation) behaves exactly like it always
-  // has — a safe default, not an accidental allow.
+  // has - a safe default, not an accidental allow.
   const [cursor, setCursor] = useState(DEFAULT_CURSOR);
   const [commenting, setCommenting] = useState(false);
   const [commentText, setCommentText] = useState("");
@@ -73,7 +73,7 @@ export function ApprovalPrompt({ request, onRespond, onComment }: ApprovalPrompt
       return;
     }
     // Direct letter shortcuts still work regardless of where the cursor is, independent of
-    // arrow navigation — this is on top of it, not a replacement.
+    // arrow navigation - this is on top of it, not a replacement.
     const lower = input.toLowerCase();
     if (lower === "c") {
       setCommenting(true);
@@ -104,7 +104,7 @@ export function ApprovalPrompt({ request, onRespond, onComment }: ApprovalPrompt
       {commenting ? (
         <Box flexDirection="column" marginTop={1}>
           <Text dimColor>
-            Type what you'd rather it do instead — enter to send and stop this action, esc to go
+            Type what you'd rather it do instead - enter to send and stop this action, esc to go
             back:
           </Text>
           <Box borderStyle="round" borderColor={theme.warn} paddingX={1} marginTop={1}>

@@ -26,7 +26,7 @@ function contentToText(content: unknown): string {
 }
 
 /** Connects to one MCP server over stdio and wraps each of its tools as a
- * ToolDefinition — namespaced as mcp__<server>__<tool> — so they flow through
+ * ToolDefinition - namespaced as mcp__<server>__<tool> - so they flow through
  * the exact same text-parsed tool-call grammar as the built-in tools, rather
  * than being exposed via native function-calling. */
 export async function connectMcpServer(

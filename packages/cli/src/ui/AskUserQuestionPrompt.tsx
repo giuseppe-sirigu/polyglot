@@ -64,7 +64,7 @@ export function AskUserQuestionPrompt({ request, onRespond }: AskUserQuestionPro
               <Text color={isCursor ? theme.signal : undefined} bold={isCursor}>
                 {marker} {option.label}
               </Text>
-              {option.description ? <Text dimColor> — {option.description}</Text> : null}
+              {option.description ? <Text dimColor> - {option.description}</Text> : null}
             </Box>
           );
         })}

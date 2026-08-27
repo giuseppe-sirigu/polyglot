@@ -15,7 +15,7 @@ import {
 import { createSession } from "./types.js";
 
 // sessionsDir() resolves via node:os's homedir(), which reads the real process.env.HOME
-// directly — same as config/loader.ts's globalSettingsPath(). Without overriding it here,
+// directly - same as config/loader.ts's globalSettingsPath(). Without overriding it here,
 // these tests would read and write the developer's actual ~/.polyglot/sessions/.
 let homeDir: string;
 let realHome: string | undefined;

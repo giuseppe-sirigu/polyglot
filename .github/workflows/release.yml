@@ -1,13 +1,13 @@
 name: Release
 
 # Publishing is a deliberate, manual act: bump the version locally
-# (`pnpm changeset:version`), commit, then push a matching `vX.Y.Z` tag. That tag —
-# and nothing else — triggers this workflow, which re-runs the full check suite and
+# (`pnpm changeset:version`), commit, then push a matching `vX.Y.Z` tag. That tag -
+# and nothing else - triggers this workflow, which re-runs the full check suite and
 # then publishes `@usepolyglot/cli` to npm.
 #
 # Auth is npm trusted publishing (OIDC): no token, no secret. It needs a Trusted
 # Publisher configured on the npmjs.com package page (repo `giuseppe-sirigu/polyglot`,
-# workflow `release.yml`), which means the package must already exist — the *first*
+# workflow `release.yml`), which means the package must already exist - the *first*
 # publish is done by hand (see CONTRIBUTING.md → Releasing).
 #
 # pnpm packs the tarball (it resolves the `workspace:` devDependency); npm publishes
@@ -27,14 +27,14 @@ jobs:
     runs-on: ubuntu-latest
     # Gated by the `release` environment: a manual approval, and `v*` tags only.
     # This name must match the "Environment" field in the npm Trusted Publisher config
-    # (or both must be blank) — a mismatch makes the OIDC exchange fail.
+    # (or both must be blank) - a mismatch makes the OIDC exchange fail.
     environment: release
     steps:
       - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
 
-      # No `registry-url:` — it makes setup-node write an .npmrc with
+      # No `registry-url:` - it makes setup-node write an .npmrc with
       # `_authToken=${NODE_AUTH_TOKEN}`, and with no token that placeholder blocks the
       # OIDC fallback.
       - uses: actions/setup-node@v7

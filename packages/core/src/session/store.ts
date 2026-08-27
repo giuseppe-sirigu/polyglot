@@ -20,14 +20,14 @@ interface SessionMessageLine {
 }
 
 /** Appended by /rename rather than rewriting the header in place, keeping the store's
- * append-only design — loadSession() takes the last one as the session's current name. */
+ * append-only design - loadSession() takes the last one as the session's current name. */
 interface SessionRenameLine {
   kind: "rename";
   name: string;
   renamedAt: number;
 }
 
-/** Appended after each turn that reported provider usage — loadSession() takes the last one as
+/** Appended after each turn that reported provider usage - loadSession() takes the last one as
  * the session's starting context size so `--resume` shows an accurate indicator right away. */
 interface SessionUsageLine {
   kind: "usage";
@@ -118,7 +118,7 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
 }
 
 /** Deletes persisted session files whose last-modified time is older than `maxAgeDays`.
- * Best-effort — unreadable dir or a failed unlink is swallowed. `exceptId` (the active session)
+ * Best-effort - unreadable dir or a failed unlink is swallowed. `exceptId` (the active session)
  * is never deleted. Returns the number of files removed. */
 export async function pruneSessions(maxAgeDays: number, exceptId?: string): Promise<number> {
   if (!(maxAgeDays > 0)) return 0;

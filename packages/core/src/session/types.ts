@@ -11,9 +11,9 @@ export interface Session {
   provider: string;
   model: string;
   messages: Message[];
-  /** Set via /rename — undefined until the user gives the session a name. */
+  /** Set via /rename - undefined until the user gives the session a name. */
   name?: string;
-  /** Most recent known size of the full prompt (system + tool docs + history), in tokens —
+  /** Most recent known size of the full prompt (system + tool docs + history), in tokens -
    * the provider-measured input-token count from the last turn's usage. Undefined before the
    * first turn and immediately after compaction; callers fall back to estimateSessionTokens(). */
   lastContextTokens?: number;

@@ -15,7 +15,7 @@ jobs:
       security-events: write
       contents: read
       # codeql-action/analyze calls the "get a workflow run" API for its own status
-      # telemetry — without this, that call 403s ("Resource not accessible by
+      # telemetry - without this, that call 403s ("Resource not accessible by
       # integration") and the step reports failure even though the scan itself succeeded.
       actions: read
     strategy:

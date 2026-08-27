@@ -19,7 +19,7 @@ export function repairJson(
     const repaired = jsonrepair(trimmed);
     const value = JSON.parse(repaired);
     // jsonrepair's last resort for text with no JSON structure at all is to quote-wrap
-    // it into a bare string — that's not a useful "repair" for a tool-call body, which
+    // it into a bare string - that's not a useful "repair" for a tool-call body, which
     // is always meant to be an object, so treat it the same as a failed repair and keep
     // trying the looser fallback below instead of accepting a wrapped string verbatim.
     if (!(typeof value === "string" && value === trimmed)) {

@@ -8,7 +8,7 @@ function runInOneShot(text: string): ParserEvent[] {
 }
 
 /** Merges adjacent text events, since streaming naturally fragments text differently
- * depending on chunk boundaries — that fragmentation is cosmetic, not a correctness signal. */
+ * depending on chunk boundaries - that fragmentation is cosmetic, not a correctness signal. */
 function mergeAdjacentText(events: ParserEvent[]): ParserEvent[] {
   const merged: ParserEvent[] = [];
   for (const event of events) {
@@ -24,7 +24,7 @@ function mergeAdjacentText(events: ParserEvent[]): ParserEvent[] {
 
 /** Feeds the text through the parser split into every possible chunk boundary, asserting the
  * logical result (text content merged, envelopes detected) is identical no matter how the
- * network happened to chunk it — exact text-event segmentation is allowed to differ. */
+ * network happened to chunk it - exact text-event segmentation is allowed to differ. */
 function runChunkedEveryWay(text: string): ParserEvent[] {
   const first = mergeAdjacentText(runInOneShot(text));
   for (let splitAt = 1; splitAt < text.length; splitAt++) {

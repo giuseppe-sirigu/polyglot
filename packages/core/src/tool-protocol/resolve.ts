@@ -27,7 +27,7 @@ function resolveXmlEnvelope(
   let input: unknown = {};
 
   if (repaired.ok && isPlainObject(repaired.value)) {
-    // some models redundantly restate the name inside the JSON body — prefer the
+    // some models redundantly restate the name inside the JSON body - prefer the
     // attribute if present, otherwise fall back to a name found inside the body.
     if (!declaredName) {
       declaredName = firstStringField(repaired.value, NAME_ALIASES);
@@ -146,7 +146,7 @@ export function resolveToolName(
 }
 
 /** When a call is missing every one of the tool's required keys, the arguments were probably
- * restructured entirely rather than just typo'd — the "additional property" errors alone (one
+ * restructured entirely rather than just typo'd - the "additional property" errors alone (one
  * per stray key) don't point at that, so add an explicit nudge toward the expected shape. Most
  * commonly seen when a model spreads a file's own fields as sibling arguments instead of
  * encoding them as a JSON string under a single "content"-style parameter. */

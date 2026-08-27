@@ -16,7 +16,7 @@ const NODE = {
 // single point (the top dot). Going down, the same 1-column-per-row step diverges outward
 // instead, landing on two separate dots (blue/purple) rather than one.
 //
-// Plain ASCII "/" and "\" rather than the Unicode box-drawing diagonals (╱ ╲) — those aren't
+// Plain ASCII "/" and "\" rather than the Unicode box-drawing diagonals (╱ ╲) - those aren't
 // guaranteed truly monospace in every terminal font, which is exactly what broke this the last
 // two times; ASCII slashes carry no such risk.
 export function Logo() {

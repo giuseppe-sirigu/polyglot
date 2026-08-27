@@ -12,7 +12,7 @@ function writeSettings(dir: string, settings: Record<string, unknown>) {
 /** Sets up isolated temp dirs for global (~/.polyglot) and project (.polyglot) settings so each
  * test is independent of both the real home directory and of other tests, then cleans them up.
  *
- * Passing HOME inside the `env` object handed to loadConfig() is NOT enough on its own —
+ * Passing HOME inside the `env` object handed to loadConfig() is NOT enough on its own -
  * globalSettingsPath() resolves the global settings path via node:os's homedir(), which reads
  * the real process.env.HOME directly and ignores loadConfig()'s env parameter entirely (that
  * parameter only feeds applyEnvOverrides, e.g. POLYGLOT_MODEL). Without also overriding the real
@@ -117,7 +117,7 @@ describe("loadConfig models", () => {
 
   it("drops malformed entries instead of making the whole settings file fail to load", () => {
     // Regression test: an earlier shape of this field used {name, label} instead of
-    // {provider, model, label} — loadConfig() used to throw on any such stale/hand-edited
+    // {provider, model, label} - loadConfig() used to throw on any such stale/hand-edited
     // entry, which meant the entire CLI failed to start over one bad array element.
     const config = loadWithSettings(
       {

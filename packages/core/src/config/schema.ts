@@ -6,7 +6,7 @@ export const McpServerConfigSchema = z.object({
   env: z.record(z.string()).optional(),
 });
 
-/** One selectable entry for the `/model` command — a full engine config (its own
+/** One selectable entry for the `/model` command - a full engine config (its own
  * provider/baseURL/apiKey/structuredOutput, independent of the top-level settings) plus a
  * friendly display label. `model` doubles as both the literal model id sent to the provider and
  * the identifier `/model <query>` matches against. */
@@ -24,10 +24,10 @@ export const SettingsSchema = z.object({
   model: z.string().optional(),
   baseURL: z.string().optional(),
   apiKey: z.string().optional(),
-  /** Opt-in grammar/schema-constrained decoding for the openai-compatible provider — see
+  /** Opt-in grammar/schema-constrained decoding for the openai-compatible provider - see
    * ChatRequest.responseSchema. Inert (ignored) when provider is "anthropic". */
   structuredOutput: z.boolean().optional(),
-  /** Selectable via the `/model` command at runtime — session-local only, never rewritten to
+  /** Selectable via the `/model` command at runtime - session-local only, never rewritten to
    * disk. See config/model-options.ts. */
   models: z.array(ModelEntrySchema).default([]),
   permissions: z
@@ -38,7 +38,7 @@ export const SettingsSchema = z.object({
     })
     .default({}),
   mcpServers: z.record(McpServerConfigSchema).default({}),
-  /** When false, nothing about a conversation is written to `~/.polyglot/` — no session
+  /** When false, nothing about a conversation is written to `~/.polyglot/` - no session
    * transcript, no usage line, no saved plan. `--resume` within the same process still works;
    * once it exits there is nothing to resume. Default true (see loader.ts). */
   persistTranscripts: z.boolean().optional(),
@@ -55,7 +55,7 @@ export const SettingsSchema = z.object({
       baseURL: z.string().optional(),
     })
     .optional(),
-  /** Undefined means "never asked" — the CLI shows a one-time consent prompt
+  /** Undefined means "never asked" - the CLI shows a one-time consent prompt
    * in that case. true/false is the user's stored answer, applied silently
    * on every future run. Lives only in the global settings file, never
    * merged from project-local settings (this is a per-machine choice). */

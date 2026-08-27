@@ -25,7 +25,7 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"
 /** Human description of where conversation data is sent, and whether that leaves the machine. */
 export function describeEndpoint(provider: string, baseURL: string | undefined): string {
   if (provider === "anthropic") {
-    return "https://api.anthropic.com — hosted (conversation data leaves this machine)";
+    return "https://api.anthropic.com - hosted (conversation data leaves this machine)";
   }
   if (!baseURL) return "(unknown)";
   let host = baseURL;
@@ -35,15 +35,15 @@ export function describeEndpoint(provider: string, baseURL: string | undefined):
     // fall back to the raw string
   }
   const local = LOCAL_HOSTS.has(host);
-  return `${baseURL} — ${local ? "local (nothing leaves this machine)" : "remote (conversation data leaves this machine)"}`;
+  return `${baseURL} - ${local ? "local (nothing leaves this machine)" : "remote (conversation data leaves this machine)"}`;
 }
 
 function describeWebSearch(f: StatusReportFields): string {
   if (f.webSearchProvider === "searxng") {
-    return `searxng${f.webSearchBaseURL ? ` (${f.webSearchBaseURL})` : " — no baseURL set"}`;
+    return `searxng${f.webSearchBaseURL ? ` (${f.webSearchBaseURL})` : " - no baseURL set"}`;
   }
   if (f.webSearchProvider === "tavily" || f.webSearchProvider === "brave") {
-    return `${f.webSearchProvider}${f.webSearchHasKey ? " (key set)" : " — NO KEY: set webSearch.apiKey"}`;
+    return `${f.webSearchProvider}${f.webSearchHasKey ? " (key set)" : " - NO KEY: set webSearch.apiKey"}`;
   }
   return `${f.webSearchProvider} (no key needed; sends queries to the backend)`;
 }
@@ -57,7 +57,7 @@ export function formatStatusReport(f: StatusReportFields): string {
     `  web search:   ${describeWebSearch(f)}`,
     "  secret files: read/write of .env, keys, .ssh/… always prompts for approval",
     `  transcript:   ${
-      f.transcriptPath ? `saved → ${f.transcriptPath}` : "ephemeral — nothing written to disk"
+      f.transcriptPath ? `saved → ${f.transcriptPath}` : "ephemeral - nothing written to disk"
     }`,
     `  retention:    ${
       f.retentionDays

@@ -2,7 +2,7 @@
   "name": "@usepolyglot/core",
   "version": "0.1.0",
   "private": true,
-  "description": "Provider-agnostic engine for Polyglot. Bundled into @usepolyglot/cli at build time — not published on its own.",
+  "description": "Provider-agnostic engine for Polyglot. Bundled into @usepolyglot/cli at build time - not published on its own.",
   "license": "FSL-1.1-ALv2",
   "homepage": "https://usepolyglot.dev",
   "repository": {

@@ -20,7 +20,7 @@ export function textResult(text: string, ok = true): ToolResult<string> {
 }
 
 export interface DiffPreview {
-  /** Shown above the diff — typically the file path being changed. */
+  /** Shown above the diff - typically the file path being changed. */
   label: string;
   oldText: string;
   newText: string;
@@ -34,7 +34,7 @@ export interface ToolDefinition<Input = unknown> {
   execute(input: Input, ctx: ToolExecutionContext): Promise<ToolResult>;
   /** Optional, read-only: lets the approval prompt show a diff before the tool actually runs.
    * Must not mutate anything. Returning null (or throwing) just falls back to the plain
-   * approval view — this is a nice-to-have preview, not something execution depends on. */
+   * approval view - this is a nice-to-have preview, not something execution depends on. */
   previewDiff?(input: Input, ctx: ToolExecutionContext): Promise<DiffPreview | null>;
 }
 

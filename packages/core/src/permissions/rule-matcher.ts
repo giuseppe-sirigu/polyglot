@@ -1,7 +1,7 @@
 import { minimatch } from "minimatch";
 import type { PermissionRequest } from "./gate.js";
 
-/** Picks the field of a tool's input that a rule pattern should match against —
+/** Picks the field of a tool's input that a rule pattern should match against -
  * the command for bash, the path for file tools, the url for web_fetch, etc. */
 function ruleSubject(request: PermissionRequest): string | null {
   const input = request.input as Record<string, unknown> | undefined;
@@ -15,7 +15,7 @@ function ruleSubject(request: PermissionRequest): string | null {
 
 /**
  * A rule is `toolName` (matches any call to that tool) or `toolName:pattern`
- * (matches only if the tool's primary argument — command/path/pattern/url —
+ * (matches only if the tool's primary argument - command/path/pattern/url -
  * matches the glob pattern), e.g. "bash:git *" or "write_file:src/**".
  */
 export function ruleMatches(rule: string, request: PermissionRequest): boolean {

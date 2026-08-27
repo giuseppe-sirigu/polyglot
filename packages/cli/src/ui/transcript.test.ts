@@ -91,7 +91,7 @@ describe("reconstructTranscript", () => {
 
   it("keeps a long plain-text reply as one assistant item, not split into fragments", () => {
     // ToolCallStreamParser is built for incremental streaming and holds back a trailing slice
-    // in case a marker was split across chunks — feeding it a whole message in one push() can
+    // in case a marker was split across chunks - feeding it a whole message in one push() can
     // still yield several "text" events for ordinary prose with no tool call in it at all, once
     // it's longer than that reserve. Regression test for exactly that.
     const content = "Why don't scientists trust atoms?\n\nBecause they make up everything!";

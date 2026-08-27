@@ -2,7 +2,7 @@ import type { ProviderAdapter } from "../providers/types.js";
 import type { Message, Session } from "./types.js";
 
 /** No provider-agnostic tokenizer exists, so this is a conservative heuristic
- * (~4 chars/token for English-ish text) rather than an exact count — good enough
+ * (~4 chars/token for English-ish text) rather than an exact count - good enough
  * to decide when to compact, not to bill against. */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -31,12 +31,12 @@ export function shouldCompact(
 const SUMMARY_PROMPT =
   "Summarize the conversation so far in a few dense paragraphs, preserving concrete facts " +
   "(file paths, decisions made, values discovered, open questions) that would matter for " +
-  "continuing the task. Do not add commentary about the summary itself — output only the summary.";
+  "continuing the task. Do not add commentary about the summary itself - output only the summary.";
 
 /**
  * Collapses everything but the last `keepLastN` messages into one summary message,
- * asking the model itself to produce the summary. Real, working compaction — not a
- * blind truncation — so context survives across the cut.
+ * asking the model itself to produce the summary. Real, working compaction - not a
+ * blind truncation - so context survives across the cut.
  */
 export async function compactSession(
   session: Session,

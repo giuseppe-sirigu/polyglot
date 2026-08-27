@@ -3,15 +3,15 @@ import type { ParserEvent, RawToolCallEnvelope } from "./types.js";
 const START_XML = /<tool[_-]?call\b/gi;
 const START_FENCE = /```[ \t]*(tool_call|toolcall)\b[ \t]*\n/gi;
 // Accepts "</tool_call>" as documented, but also the shorter "</tool>" some models default to
-// when abbreviating a closing tag — without this, a mismatched close never terminates the
+// when abbreviating a closing tag - without this, a mismatched close never terminates the
 // envelope, so the parser keeps consuming everything after it (including every subsequent tool
 // call in the same message) as one giant unparseable body until the stream ends.
 const END_XML = /<\/[ \t]*tool(?:[_-]?call)?[ \t]*>/i;
 const END_FENCE = /\n?```[ \t]*(\n|$)/;
 const NAME_ATTR = /name\s*=\s*["']([^"']*)["']/i;
 
-/** Some models append a stray, never-opened closing fence marker — a bare ``` on its own line
- * with no language tag — right after `</tool_call>`, apparently out of habit even though
+/** Some models append a stray, never-opened closing fence marker - a bare ``` on its own line
+ * with no language tag - right after `</tool_call>`, apparently out of habit even though
  * nothing was ever fenced. Left in the text stream, that marker pairs up with whatever real
  * ``` fence comes next in the message and desyncs fence rendering for the rest of it. Matched
  * only when bare (no language) since a deliberate fence almost always carries one. */
@@ -36,7 +36,7 @@ type Mode =
       startRaw: string;
     };
 
-/** Start markers only count when they open a line (optionally after leading spaces/tabs) —
+/** Start markers only count when they open a line (optionally after leading spaces/tabs) -
  * this is what tells "<tool_call> tag" mentioned mid-sentence apart from a real invocation. */
 function isAtLineStart(buffer: string, index: number, precedingChar: string | null): boolean {
   let i = index;
@@ -199,7 +199,7 @@ export class ToolCallStreamParser {
 
     if (!match) {
       if (this.buffer.length > MAX_ENVELOPE_CHARS) {
-        // runaway unterminated envelope — force-close it now so the caller can surface an error
+        // runaway unterminated envelope - force-close it now so the caller can surface an error
         const envelope: RawToolCallEnvelope = {
           variant: this.mode.variant,
           declaredName: this.mode.declaredName,

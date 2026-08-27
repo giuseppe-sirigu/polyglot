@@ -25,7 +25,7 @@ export interface ModelOption {
   provider: "anthropic" | "openai-compatible";
   model: string;
   label: string;
-  /** True for the synthetic option representing whatever the session actually started with —
+  /** True for the synthetic option representing whatever the session actually started with -
    * always listed first, even when not itself present in `models[]`. */
   isCurrent: boolean;
   /** Undefined only for the synthetic current-model option. */
@@ -33,8 +33,8 @@ export interface ModelOption {
 }
 
 /** Builds the full list `/model` shows: every entry in `entries`, with whichever one matches
- * `current` (by provider+model) flagged `isCurrent`. If none matches — the session started on a
- * model that isn't itself configured — a synthetic current entry is prepended instead, the same
+ * `current` (by provider+model) flagged `isCurrent`. If none matches - the session started on a
+ * model that isn't itself configured - a synthetic current entry is prepended instead, the same
  * as before. Entries are never duplicated: once you've switched to a configured model, it's the
  * "current" row rather than getting a second synthetic copy of itself. */
 export function listModelOptions(

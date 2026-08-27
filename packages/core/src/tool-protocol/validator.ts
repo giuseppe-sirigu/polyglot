@@ -19,7 +19,7 @@ export function validateAgainstSchema(schema: JsonSchema, input: unknown): Valid
   const ok = validate(input);
   if (ok) return { ok: true, errors: [] };
 
-  // Dedupe, and for "additionalProperties" name the offending property — ajv's default message
+  // Dedupe, and for "additionalProperties" name the offending property - ajv's default message
   // is just "must NOT have additional properties" with the property name tucked away in
   // e.params instead of e.message, and it emits one identical-looking error per extra property,
   // which left the model unable to tell what to actually remove.

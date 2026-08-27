@@ -18,7 +18,7 @@ interface AskUserQuestionInput {
 }
 
 /**
- * Lets the model pause and ask the user a multiple-choice clarifying question — for a decision
+ * Lets the model pause and ask the user a multiple-choice clarifying question - for a decision
  * genuinely theirs to make, not something the model could reasonably decide on its own. Only
  * registered in plan mode, alongside exit_plan_mode: this is for resolving ambiguity in the
  * plan being drafted, not a general-purpose prompt tool.
@@ -30,7 +30,7 @@ export function createAskUserQuestionTool(
     name: "ask_user_question",
     description:
       "Ask the user a multiple-choice clarifying question when the plan depends on a decision " +
-      "only they can make. Use sparingly — prefer a reasonable default when the answer wouldn't " +
+      "only they can make. Use sparingly - prefer a reasonable default when the answer wouldn't " +
       "materially change the plan.",
     permission: "read",
     inputSchema: {

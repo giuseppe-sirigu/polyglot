@@ -14,11 +14,11 @@ const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const LIST_RE = /^\s*([-*]|\d+\.)\s+(.*)$/;
 const FENCE_RE = /^```/;
 
-/** Splits markdown source into a small set of block types. Not a full CommonMark parser —
+/** Splits markdown source into a small set of block types. Not a full CommonMark parser -
  * scoped to what the model actually produces (headings, fences, lists, paragraphs). An
  * unclosed trailing fence (the model is still mid-code-block while streaming) is rendered as
  * an open code block containing whatever content has arrived so far, rather than erroring or
- * falling back to a paragraph — this is what keeps live streaming from glitching mid-fence. */
+ * falling back to a paragraph - this is what keeps live streaming from glitching mid-fence. */
 function splitBlocks(text: string): Block[] {
   const rawLines = text.split("\n");
   const blocks: Block[] = [];
@@ -38,7 +38,7 @@ function splitBlocks(text: string): Block[] {
       if (i < rawLines.length) i++; // consume closing fence, if present
       // A fence that ends up with no real content is almost always the empty shell left behind
       // after a <tool_call> block nested inside it got sliced out by the tool-call parser (the
-      // model put a call inside a code fence despite being told not to) — skip it rather than
+      // model put a call inside a code fence despite being told not to) - skip it rather than
       // rendering a bordered box with nothing but a language label in it.
       if (codeLines.some((l) => l.trim().length > 0)) {
         blocks.push({ type: "code", lang, lines: codeLines });

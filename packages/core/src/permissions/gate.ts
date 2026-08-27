@@ -8,7 +8,7 @@ export interface PermissionRequest {
   /** Extra context surfaced to the user alongside the prompt (e.g. why approval is being
    * asked for even though the current mode wouldn't normally ask). */
   note?: string;
-  /** Lazy — only called if a prompt is actually shown, so paths that never reach an
+  /** Lazy - only called if a prompt is actually shown, so paths that never reach an
    * interactive prompt (auto mode, an allow rule) never pay for the read. */
   loadDiff?: () => Promise<DiffPreview | null>;
 }

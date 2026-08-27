@@ -110,7 +110,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
       )) {
         if (event.type === "text_delta") {
           fullText += event.delta;
-          // Structured mode buffers the whole response — the completion is one JSON object,
+          // Structured mode buffers the whole response - the completion is one JSON object,
           // so there's nothing human-readable to reveal incrementally; it's parsed and shown
           // as a single unit once the stream ends (see the `structured` branch below).
           if (!structured) {
@@ -130,7 +130,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
             inputTokens: event.inputTokens,
             outputTokens: event.outputTokens,
           });
-          // Providers may emit an interim usage with inputTokens: 0 before the final one — only
+          // Providers may emit an interim usage with inputTokens: 0 before the final one - only
           // the real prompt-size count is worth recording as the session's context size.
           if (event.inputTokens > 0) {
             session.lastContextTokens = event.inputTokens;
@@ -171,7 +171,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
       // Re-validated against each tool's schema via finalize() even though the schema was
       // supposedly enforced during generation: grammar generation on some backends only
       // enforces JSON *shape* and may silently ignore deeper schema keywords (pattern, enum,
-      // nested oneOf) that don't translate to a token grammar — the server accepting the
+      // nested oneOf) that don't translate to a token grammar - the server accepting the
       // schema isn't the same guarantee as the arguments being fully valid.
       resolutions = parsed.value.tool_calls.map((call) =>
         finalize({ raw: JSON.stringify(call) }, call.name, call.arguments, tools),
@@ -184,7 +184,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
 
     onEvent({ type: "turn_end", stopReason });
     // Persist the full raw completion, not just the human-facing "message" text in structured
-    // mode — this mirrors free-text mode, where the <tool_call> tags are naturally part of the
+    // mode - this mirrors free-text mode, where the <tool_call> tags are naturally part of the
     // persisted text too. Dropping the model's own tool_calls from history here was the actual
     // bug: on a later turn the model had no memory of e.g. its own already-approved plan call,
     // and (correctly, given what it could see) concluded nothing had been approved yet.
@@ -196,7 +196,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     }
 
     // All calls in one turn were decided by the model before seeing any of their
-    // results, so there's no ordering dependency between them — run them concurrently
+    // results, so there's no ordering dependency between them - run them concurrently
     // (this is also what makes multiple "task" sub-agent calls in one turn parallel).
     for (const resolved of resolutions) {
       if ("message" in resolved) {

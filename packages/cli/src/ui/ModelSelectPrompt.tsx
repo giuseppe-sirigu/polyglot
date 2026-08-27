@@ -59,7 +59,7 @@ export function ModelSelectPrompt({ options, onSelect, onCancel }: ModelSelectPr
               </Text>
               <Text dimColor>
                 {" "}
-                — [{o.provider}] {o.model}
+                - [{o.provider}] {o.model}
               </Text>
             </Box>
           );

@@ -16,7 +16,7 @@ export interface BuildAgentToolsOptions {
 const DEFAULT_MAX_DEPTH = 3;
 
 /**
- * Builds a tool registry containing the base tools plus a "task" sub-agent tool —
+ * Builds a tool registry containing the base tools plus a "task" sub-agent tool -
  * recursively, so a sub-agent can itself delegate further, up to maxDepth. At the
  * depth limit, "task" is simply omitted: a sub-agent there has no way to recurse
  * further, so runaway sub-agent spawning is bounded by construction.

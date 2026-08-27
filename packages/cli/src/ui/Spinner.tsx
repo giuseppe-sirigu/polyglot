@@ -2,7 +2,7 @@ import { Text } from "ink";
 import { useEffect, useState } from "react";
 import { theme } from "./theme.js";
 
-// A pulse between hollow, dotted, and filled diamond — a "rotating" take on the ◈ brand mark.
+// A pulse between hollow, dotted, and filled diamond - a "rotating" take on the ◈ brand mark.
 // Ink repaints its entire dynamic region on every state change anywhere in the tree, so this
 // interval trades a bit of animation smoothness for meaningfully fewer full-terminal redraws.
 const FRAMES = ["◇", "◈", "◆", "◈"];

@@ -7,7 +7,7 @@ import { minimatch } from "minimatch";
  *      doesn't pull secrets into the model's context).
  *   2. `read_file`/`write_file`/`edit_file` against one prompts for approval in
  *      every permission mode (see permissions/policy.ts).
- * This is deliberately conservative — a false positive is one extra prompt, or a
+ * This is deliberately conservative - a false positive is one extra prompt, or a
  * file omitted from a listing that `read_file` can still fetch explicitly.
  */
 export const SECRET_FILE_GLOBS = [
@@ -32,10 +32,10 @@ export const SECRET_FILE_GLOBS = [
   "credentials.json",
 ];
 
-/** Directory names that hold secrets wholesale — matched against any path segment. */
+/** Directory names that hold secrets wholesale - matched against any path segment. */
 export const SECRET_DIR_NAMES = new Set([".ssh", ".aws", ".gnupg", ".gpg", "secrets"]);
 
-/** minimatch patterns for glob's `ignore` option — the file globs plus the secret dirs. */
+/** minimatch patterns for glob's `ignore` option - the file globs plus the secret dirs. */
 export const SECRET_IGNORE_GLOBS = [
   ...SECRET_FILE_GLOBS.map((g) => `**/${g}`),
   ...[...SECRET_DIR_NAMES].map((d) => `**/${d}/**`),

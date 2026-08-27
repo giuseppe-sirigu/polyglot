@@ -12,13 +12,13 @@
   <img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node >= 20" />
 </p>
 
-A coding-agent CLI that works the same way regardless of which model is answering — Claude, GPT, or an open-weight model like Qwen, DeepSeek, GLM, or Llama running locally via Ollama, vLLM, LM Studio, or any other OpenAI-compatible server.
+A coding-agent CLI that works the same way regardless of which model is answering - Claude, GPT, or an open-weight model like Qwen, DeepSeek, GLM, or Llama running locally via Ollama, vLLM, LM Studio, or any other OpenAI-compatible server.
 
 ## Why
 
 Most agent CLIs lean on a provider's *native* function-calling API and assume near-perfect adherence to its exact tool-call JSON schema. Open-weight models frequently emit malformed, incomplete, or off-format tool calls against that API, so the whole agent loop breaks.
 
-Polyglot treats tool invocation as a **text-parsing problem** instead: tools are described to the model in the system prompt, and a fault-tolerant streaming parser extracts and repairs tool calls from the model's raw output — trailing commas, single quotes, near-miss tool names, models that default to OpenAI-style `{"name":..., "arguments":...}` JSON instead of the taught envelope, all handled the same way. The same parser and executor run underneath every provider, so behavior doesn't silently diverge between "well-behaved" and "flaky" models.
+Polyglot treats tool invocation as a **text-parsing problem** instead: tools are described to the model in the system prompt, and a fault-tolerant streaming parser extracts and repairs tool calls from the model's raw output - trailing commas, single quotes, near-miss tool names, models that default to OpenAI-style `{"name":..., "arguments":...}` JSON instead of the taught envelope, all handled the same way. The same parser and executor run underneath every provider, so behavior doesn't silently diverge between "well-behaved" and "flaky" models.
 
 ## Install
 
@@ -26,7 +26,7 @@ Polyglot treats tool invocation as a **text-parsing problem** instead: tools are
 npm install -g @usepolyglot/cli
 ```
 
-Or build from source — see [the install guide](https://usepolyglot.dev/docs/start/install).
+Or build from source - see [the install guide](https://usepolyglot.dev/docs/start/install).
 
 ## Quick start
 
@@ -50,11 +50,11 @@ polyglot
 
 ## Documentation
 
-**Full documentation is at [usepolyglot.dev/docs](https://usepolyglot.dev/docs)** — first-run walkthroughs, the settings/env reference, permission modes, web search, MCP, scripting, running offline, and the model/server compatibility matrix.
+**Full documentation is at [usepolyglot.dev/docs](https://usepolyglot.dev/docs)** - first-run walkthroughs, the settings/env reference, permission modes, web search, MCP, scripting, running offline, and the model/server compatibility matrix.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, code style, the changeset/release flow, and what kinds of contributions are most useful right now (fixture tests from real messy model output, Windows testing, and additional OpenAI-compatible provider quirks especially).
+See [CONTRIBUTING.md](CONTRIBUTING.md) - dev setup, code style, the changeset/release flow, and what kinds of contributions are most useful right now (fixture tests from real messy model output, Windows testing, and additional OpenAI-compatible provider quirks especially).
 
 ## Security
 
@@ -62,6 +62,6 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability. How Polyglot handles y
 
 ## License
 
-[Functional Source License, Version 1.1, ALv2 Future License](https://fsl.software) — see [LICENSE](LICENSE).
+[Functional Source License, Version 1.1, ALv2 Future License](https://fsl.software) - see [LICENSE](LICENSE).
 
 Source is fully visible; you can read it, modify it, self-host it, and use it for your own internal purposes freely. The one thing it restricts is launching a competing commercial product or service built on this code. Two years after each version is published, that version automatically converts to the Apache License, Version 2.0.

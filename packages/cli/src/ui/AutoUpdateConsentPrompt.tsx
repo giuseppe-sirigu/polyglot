@@ -24,7 +24,7 @@ export function AutoUpdateConsentPrompt({ onRespond }: AutoUpdateConsentPromptPr
         Keep polyglot up to date automatically?
       </Text>
       <Text dimColor>
-        When a new version is available, polyglot can update itself in the background — you'll just
+        When a new version is available, polyglot can update itself in the background - you'll just
         see a note that it happened and to restart. You can change this later in{" "}
         ~/.polyglot/settings.json ("autoUpdate").
       </Text>

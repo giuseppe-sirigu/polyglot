@@ -229,7 +229,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   } else {
     if (assistantText && !assistantText.endsWith("\n")) process.stdout.write("\n");
     process.stderr.write(
-      persist ? `session: ${session.id}\n` : `session: ${session.id} (ephemeral — not saved)\n`,
+      persist ? `session: ${session.id}\n` : `session: ${session.id} (ephemeral - not saved)\n`,
     );
   }
 

@@ -39,7 +39,7 @@ export interface PersistedPlan {
   path: string;
 }
 
-/** Saves a proposed plan to disk, one file per exit_plan_mode call — a durable record of what
+/** Saves a proposed plan to disk, one file per exit_plan_mode call - a durable record of what
  * was proposed, independent of whether the user approved it, mirroring what Claude Code's own
  * ~/.claude/plans directory is for. Named by timestamp + a session-id prefix so files sort
  * chronologically and stay attributable to the session that produced them, without needing any

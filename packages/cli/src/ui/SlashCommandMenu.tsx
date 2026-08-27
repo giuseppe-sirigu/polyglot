@@ -8,7 +8,7 @@ export interface SlashCommandMenuProps {
 }
 
 /** Live-updating `/`-command suggestion popup, rendered above the input box. Purely
- * presentational — InputBar owns the filtering and highlighted index, MultilineTextInput owns
+ * presentational - InputBar owns the filtering and highlighted index, MultilineTextInput owns
  * accepting a suggestion (it's the only thing allowed to mutate the actual input text). */
 export function SlashCommandMenu({ commands, highlightedIndex }: SlashCommandMenuProps) {
   if (commands.length === 0) return null;
@@ -24,7 +24,7 @@ export function SlashCommandMenu({ commands, highlightedIndex }: SlashCommandMen
               {isHighlighted ? "❯ " : "  "}
               {c.command}
             </Text>
-            <Text dimColor> — {c.description}</Text>
+            <Text dimColor> - {c.description}</Text>
           </Box>
         );
       })}

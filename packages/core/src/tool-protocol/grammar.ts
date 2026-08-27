@@ -64,12 +64,12 @@ export function buildToolSystemPrompt(
     mode === "plan"
       ? "\n\nYou are currently in PLAN MODE: only read-only and research tools (e.g. read_file, " +
         "grep, glob, web_fetch, web_search, ask_user_question) will succeed. write_file, " +
-        "edit_file, bash, and task are hard-denied right now — do not attempt them, they will " +
+        "edit_file, bash, and task are hard-denied right now - do not attempt them, they will " +
         "just fail and waste a turn. Do " +
         "your read-only research, then call exit_plan_mode with your plan; write/execute tools " +
         "become available only after the user approves it. Do NOT ask the user to confirm your " +
         'plan in prose (e.g. "Please confirm if you would like me to proceed", "Let me know if ' +
-        'this looks good") — that is not how approval works here and the user cannot approve ' +
+        'this looks good") - that is not how approval works here and the user cannot approve ' +
         "anything that way. The ONLY way to present a plan for approval is to call " +
         "exit_plan_mode with the plan text as its argument; the user is then shown a dedicated " +
         "approve/reject prompt directly, and you get the answer back as that call's result. If " +
@@ -88,7 +88,7 @@ You must respond with a single JSON object matching this shape:
 
 - "message": your natural-language reply to show the user this turn. Use "" if this turn is only tool calls.
 - "tool_calls": zero or more tool invocations to run this turn. Each entry's "arguments" must match that tool's own schema below. Use [] if you have nothing to call.
-- Only the tools listed below exist — "name" must be exactly one of them.
+- Only the tools listed below exist - "name" must be exactly one of them.
 - After tool_calls run, their results are given back to you as a new message; you'll be asked to produce another JSON object of this same shape. Keep going until there's nothing left to do, then return an empty tool_calls array with your final message.${platformNote}${planModeNote}
 
 Available tools:
@@ -112,22 +112,22 @@ with nothing else on the opening and closing lines:
 </tool_call>
 
 Rules:
-- The content between the tags must be a single JSON object matching the tool's arguments — no comments, no trailing commas, no prose.
-- Every value must be a JSON literal, never code — no function calls (e.g. \`JSON.stringify(...)\`), no variable references, no expressions. If an argument's value is itself structured data (e.g. a file's JSON content for write_file's "content"), write it out fully as a plain JSON string, don't compute it.
-- The object's keys must exactly match the tool's declared parameter names, nothing more and nothing less. Never substitute a parameter with unrelated structure — e.g. when writing structured content to a file, encode it as a JSON string inside the "content" parameter, not as separate sibling keys alongside "path".
+- The content between the tags must be a single JSON object matching the tool's arguments - no comments, no trailing commas, no prose.
+- Every value must be a JSON literal, never code - no function calls (e.g. \`JSON.stringify(...)\`), no variable references, no expressions. If an argument's value is itself structured data (e.g. a file's JSON content for write_file's "content"), write it out fully as a plain JSON string, don't compute it.
+- The object's keys must exactly match the tool's declared parameter names, nothing more and nothing less. Never substitute a parameter with unrelated structure - e.g. when writing structured content to a file, encode it as a JSON string inside the "content" parameter, not as separate sibling keys alongside "path".
 - Only one tool call per <tool_call> block. If you need multiple tool calls, emit multiple separate blocks.
 - Never put a tool call inside a code fence (no \`\`\` around it).
-- Do not describe a tool call in prose instead of emitting it — if you decide to use a tool, emit the block.
+- Do not describe a tool call in prose instead of emitting it - if you decide to use a tool, emit the block.
 - Wait for the tool's result (given back to you as a message) before continuing, rather than guessing the outcome.
 - If a tool call fails to parse, you will be told what was wrong so you can retry.
-- Never invent file paths, file contents, or tool results from memory or guesswork. When quoting or reviewing code, quote only what a tool result actually returned — read a file before discussing its contents, and if you're unsure whether something exists, use a tool to check rather than assuming.
-- After a tool call, its result is given back to you wrapped as <tool_result name="...">...</tool_result> — that wrapper is informational, never emit it yourself.${platformNote}${planModeNote}
+- Never invent file paths, file contents, or tool results from memory or guesswork. When quoting or reviewing code, quote only what a tool result actually returned - read a file before discussing its contents, and if you're unsure whether something exists, use a tool to check rather than assuming.
+- After a tool call, its result is given back to you wrapped as <tool_result name="...">...</tool_result> - that wrapper is informational, never emit it yourself.${platformNote}${planModeNote}
 
 Available tools:
 
 ${toolDocs}
 
-Example — calling "${exampleTool.name}":
+Example - calling "${exampleTool.name}":
 <tool_call name="${exampleTool.name}">
 ${JSON.stringify(exampleArgs)}
 </tool_call>`;
@@ -138,7 +138,7 @@ function describePlatform(): string {
     process.platform === "win32" ? "Windows" : process.platform === "darwin" ? "macOS" : "Linux";
   const shellNote =
     process.platform === "win32"
-      ? "bash commands run through PowerShell, not cmd.exe — prefer PowerShell-compatible syntax (ls, cat, cp, rm, Remove-Item, etc.) and PowerShell path separators when in doubt."
+      ? "bash commands run through PowerShell, not cmd.exe - prefer PowerShell-compatible syntax (ls, cat, cp, rm, Remove-Item, etc.) and PowerShell path separators when in doubt."
       : "bash commands run through bash.";
   return `You are running on ${label}. ${shellNote}`;
 }

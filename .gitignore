@@ -8,5 +8,5 @@ coverage/
 .env.local
 
 # Project-local polyglot config can carry an inline apiKey (see README's settings.json /
-# multiple-models docs) — never commit it, including from self-testing this repo with itself.
+# multiple-models docs) - never commit it, including from self-testing this repo with itself.
 .polyglot/

@@ -63,7 +63,7 @@ async function main() {
   const mcp = mcpServerNames.length > 0 ? await connectAllMcpServers(resolved.mcpServers) : null;
 
   // Start from a blank terminal: clear the visible screen, the scrollback buffer, and home the
-  // cursor. Only when attached to a real terminal — writing escape codes into a pipe/redirect
+  // cursor. Only when attached to a real terminal - writing escape codes into a pipe/redirect
   // would just corrupt the output.
   if (process.stdout.isTTY) {
     process.stdout.write("\x1b[2J\x1b[3J\x1b[H");

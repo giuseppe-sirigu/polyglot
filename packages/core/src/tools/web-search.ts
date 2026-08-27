@@ -33,7 +33,7 @@ class WebSearchError extends Error {}
 /** Parses the DuckDuckGo "lite" results page. Each result is an <a class="result-link">
  * followed, in document order, by a <td class="result-snippet">. */
 export function parseDuckDuckGoLite(html: string): WebSearchResult[] {
-  // Match every <a>…</a>, keep the ones whose attributes mention result-link — the attribute
+  // Match every <a>…</a>, keep the ones whose attributes mention result-link - the attribute
   // order (rel / href / class) varies, so pull href out of the attribute blob rather than
   // assuming a fixed layout.
   const links = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)].filter((m) =>
@@ -132,7 +132,7 @@ async function searchDuckDuckGo(query: string, signal: AbortSignal): Promise<Web
   );
   if (!res.ok) {
     throw new WebSearchError(
-      `DuckDuckGo returned HTTP ${res.status}. It rate-limits automated requests — retry shortly, or configure a different webSearch.provider.`,
+      `DuckDuckGo returned HTTP ${res.status}. It rate-limits automated requests - retry shortly, or configure a different webSearch.provider.`,
     );
   }
   return parseDuckDuckGoLite(await res.text());
@@ -241,7 +241,7 @@ export function formatResults(results: WebSearchResult[], answer?: string): stri
 /**
  * A query-based web search tool. Provider-pluggable, mirroring the model config: zero-config
  * DuckDuckGo by default, SearXNG for self-hosters, Tavily/Brave with an API key. Returns a
- * ranked list of title/URL/snippet — the model uses web_fetch to read any result in full.
+ * ranked list of title/URL/snippet - the model uses web_fetch to read any result in full.
  */
 export function createWebSearchTool(config: WebSearchConfig): ToolDefinition<WebSearchInput> {
   return {

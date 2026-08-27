@@ -13,7 +13,7 @@ pnpm changeset
 ```
 
 Pick the bump type (pre-1.0: `minor` for anything user-visible, `patch` for fixes) and write a
-one- or two-line summary — that text becomes the changelog entry, so write it for a reader, not
+one- or two-line summary - that text becomes the changelog entry, so write it for a reader, not
 as a commit message. Commit the generated `.changeset/*.md` file alongside your code.
 
 Changes that don't touch the published CLI (docs, internal refactors, `packages/core`-only

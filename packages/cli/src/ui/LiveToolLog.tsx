@@ -6,7 +6,7 @@ export interface LiveToolLogProps {
   items: LiveTurnItem[];
 }
 
-/** Tool calls/results/parse-errors for the turn currently in progress — rendered exactly the
+/** Tool calls/results/parse-errors for the turn currently in progress - rendered exactly the
  * way they'll look once flushed into the permanent transcript, so nothing shifts visually when
  * that happens. Kept out of the Static block until then only because Ink's Static list is
  * append-only and this turn's items aren't final until the round completes. */

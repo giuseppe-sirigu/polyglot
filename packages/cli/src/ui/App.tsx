@@ -113,7 +113,7 @@ export function App({
   const updateConsentResolveRef = useRef<((enabled: boolean) => void) | null>(null);
   const [resumeRequest, setResumeRequest] = useState<SessionSummary[] | null>(null);
   const [modelRequest, setModelRequest] = useState<ModelOption[] | null>(null);
-  // Messages submitted while a turn is already running queue here instead of being blocked —
+  // Messages submitted while a turn is already running queue here instead of being blocked -
   // InputBar stays typable throughout. Backed by a ref (not just the state) so the queue drain
   // in runTurn() always reads the current contents rather than whatever was captured in an
   // older closure.
@@ -121,7 +121,7 @@ export function App({
   const messageQueueRef = useRef<{ id: string; text: string }[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   // Guards drainQueue() against reentrancy: an Esc interrupt kicks off a drain while the aborted
-  // turn's promise is still unwinding and will also try to drain once it does — whichever runs
+  // turn's promise is still unwinding and will also try to drain once it does - whichever runs
   // first processes the whole queue, the other becomes a no-op.
   const drainingRef = useRef(false);
   const nextId = useRef(0);
@@ -139,10 +139,10 @@ export function App({
     label: resolved.engine.model,
   });
 
-  // `resolved.models` only lists the alternates configured for /model to switch *to* — the
+  // `resolved.models` only lists the alternates configured for /model to switch *to* - the
   // model actually running at startup (resolved.engine) is never necessarily one of them. Add
   // it here (unless it's already a configured entry) so /model can always switch back to where
-  // the session started, even after switching away — otherwise it silently drops out of the
+  // the session started, even after switching away - otherwise it silently drops out of the
   // list the moment `activeModel` no longer points at it.
   const modelEntries = useMemo<ModelEntry[]>(() => {
     const startup: ModelEntry = {
@@ -201,7 +201,7 @@ export function App({
   }
 
   // Ink repaints its entire dynamic (non-Static) region on every state change anywhere in the
-  // tree, however small — so committing a React state update on every single streamed token
+  // tree, however small - so committing a React state update on every single streamed token
   // (which can arrive many times a second) forces far more full-region terminal redraws than
   // a human can usefully perceive, and shows up as flicker. Batch deltas and flush at most
   // ~16 times/sec instead.
@@ -237,13 +237,13 @@ export function App({
   }
   const gate = gateRef.current;
 
-  // Rebuilt whenever the active model changes — this is what keeps the "task" sub-agent tool
+  // Rebuilt whenever the active model changes - this is what keeps the "task" sub-agent tool
   // (which captures `adapter` by closure at construction, in core's buildAgentTools) from
   // silently continuing to spawn sub-agents against a model /model has already switched away
   // from. Rebuilding is cheap (just registering tool objects into a fresh Map), and switching is
   // a deliberate, infrequent action that can only happen while the input bar is enabled (no turn
   // in flight), so this can never race a turn that's using the previous registry.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: gate is a stable ref-backed singleton and mcp never changes after mount — including them would just force needless rebuilds
+  // biome-ignore lint/correctness/useExhaustiveDependencies: gate is a stable ref-backed singleton and mcp never changes after mount - including them would just force needless rebuilds
   const tools = useMemo(() => {
     const baseTools = [
       readFileTool,
@@ -263,7 +263,7 @@ export function App({
       model: activeModel.model,
       cwd: session.cwd,
     });
-    // Always registered — not gated on the mode the session *started* in — since the user can
+    // Always registered - not gated on the mode the session *started* in - since the user can
     // switch into plan mode later via Shift+Tab, and the model must still be able to call these
     // then. (What gets *advertised* in the system prompt is filtered by the live mode below;
     // the registry itself just needs to never come back "Unknown tool".)
@@ -294,7 +294,7 @@ export function App({
   const systemPrompt = useMemo(() => {
     // exit_plan_mode/ask_user_question are always in the registry (so calling them never
     // fails with "Unknown tool"), but only worth advertising to the model while actually in
-    // plan mode — showing them elsewhere just invites confusion about when to use them.
+    // plan mode - showing them elsewhere just invites confusion about when to use them.
     const promptTools =
       mode === "plan"
         ? tools.list()
@@ -345,8 +345,8 @@ export function App({
           kind: "system",
           tone: "info",
           text: autoUpdate
-            ? "Got it — polyglot will update itself automatically from now on."
-            : "Got it — polyglot will only notify you about updates. Change this anytime in ~/.polyglot/settings.json.",
+            ? "Got it - polyglot will update itself automatically from now on."
+            : "Got it - polyglot will only notify you about updates. Change this anytime in ~/.polyglot/settings.json.",
         });
       }
 
@@ -369,7 +369,7 @@ export function App({
         });
       }
     })();
-    // run once on startup — intentionally not re-checking on every render
+    // run once on startup - intentionally not re-checking on every render
   }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount; session.id is the initial session's, stable here
@@ -407,7 +407,7 @@ export function App({
       !modelRequest;
 
     // Esc stops the in-progress turn (model call and/or tool execution) without exiting the
-    // app, as long as no modal prompt is currently claiming input focus — those handle Esc
+    // app, as long as no modal prompt is currently claiming input focus - those handle Esc
     // themselves (e.g. as "deny"/"reject"). First Esc stops the turn and lets anything queued
     // while it ran run next; a second Esc *while those queued messages are running* (drainingRef)
     // stops that too and drops the rest of the queue.
@@ -425,10 +425,10 @@ export function App({
   });
 
   /** Shared by /reset and resuming a session: clears the visible transcript for a fresh one.
-   * Ink's <Static> is append-only — it can never un-print what it's already flushed to the
+   * Ink's <Static> is append-only - it can never un-print what it's already flushed to the
    * terminal, so this also needs an actual terminal clear and a fresh Static instance (forced
    * by keying <Static> off session.id), not just resetting `items` to []. Does NOT touch
-   * `session` itself — callers set that afterward, once they know what the new one is. */
+   * `session` itself - callers set that afterward, once they know what the new one is. */
   function resetTranscriptUI() {
     if (stdout?.isTTY) {
       stdout.write("\x1b[2J\x1b[3J\x1b[H");
@@ -443,7 +443,7 @@ export function App({
     clearMessageQueue();
   }
 
-  /** The actual entry point wired to InputBar's onSubmit. Never blocked by isRunning — typing
+  /** The actual entry point wired to InputBar's onSubmit. Never blocked by isRunning - typing
    * and submitting while a turn is in progress queues the message instead (InputBar stays
    * enabled throughout, see below), so nothing typed is ever silently dropped. */
   async function handleSubmit(raw: string) {
@@ -462,7 +462,7 @@ export function App({
   /** Runs one submission to completion, then drains the queue: if anything was typed while it
    * ran, immediately runs the next one the same way, and so on until the queue is empty. This
    * wraps runTurnBody() rather than living inside it because a slash command (most of
-   * runTurnBody's branches) returns long before reaching runTurnBody's own end — draining needs
+   * runTurnBody's branches) returns long before reaching runTurnBody's own end - draining needs
    * to happen after *every* exit path, not just the one a real agent turn takes. */
   async function runTurn(value: string) {
     await runTurnBody(value);
@@ -470,7 +470,7 @@ export function App({
   }
 
   /** Runs queued messages one at a time, in order, until the queue is empty. Safe to call from
-   * more than one place concurrently (see drainingRef) — used both by runTurn() after a normal
+   * more than one place concurrently (see drainingRef) - used both by runTurn() after a normal
    * turn and by hardStop() after an Esc interrupt. */
   async function drainQueue() {
     if (drainingRef.current) return;
@@ -561,7 +561,7 @@ export function App({
       pushItem({ kind: "user", text: value });
       const all = await listSessions();
       // Most-recently-updated first (listSessions()'s own sort), current session excluded, and
-      // capped so the picker never has to scroll — a long tail of very old sessions is rarely
+      // capped so the picker never has to scroll - a long tail of very old sessions is rarely
       // what you meant by "resume a previous one".
       const others = all.filter((s) => s.id !== session.id).slice(0, 15);
       if (others.length === 0) {
@@ -600,7 +600,7 @@ export function App({
       pushItem({
         kind: "system",
         tone: "info",
-        text: `Context was getting large — compacted automatically: ~${before} -> ~${after} tokens`,
+        text: `Context was getting large - compacted automatically: ~${before} -> ~${after} tokens`,
       });
     }
 
@@ -612,7 +612,7 @@ export function App({
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    // Aborting the signal only asks the in-flight work to stop cooperatively — a hung child
+    // Aborting the signal only asks the in-flight work to stop cooperatively - a hung child
     // process or a stream that doesn't check the signal can leave the underlying promise
     // pending forever. hardStop() (Esc, plan rejection) supersedes this controller and resets
     // the UI immediately regardless; every callback below checks isStale() first so that if
@@ -683,7 +683,7 @@ export function App({
         },
       });
     } catch (err) {
-      // hardStop() already reset the UI and posted its own message — don't also surface the
+      // hardStop() already reset the UI and posted its own message - don't also surface the
       // raw (likely AbortError) rejection once the old, now-superseded promise catches up.
       if (!isStale()) {
         pushItem({
@@ -709,14 +709,14 @@ export function App({
     }
   }
 
-  /** Immediately returns the UI to an idle, ready-for-input state — used for both Esc and a
+  /** Immediately returns the UI to an idle, ready-for-input state - used for both Esc and a
    * rejected plan. Does NOT wait for the in-flight turn to actually acknowledge the abort: a
    * hung child process or a non-cooperative stream could otherwise leave the UI locked forever
    * with no way out. Any state that promise's callbacks would still touch is guarded by
    * isStale() inside handleSubmit, so a late/never-arriving resolution is a safe no-op.
    *
    * With `resumeQueue`, anything queued while the turn ran is kept and drained right after (Esc:
-   * stop this turn, then carry on with what I lined up). Without it, the queue is discarded — a
+   * stop this turn, then carry on with what I lined up). Without it, the queue is discarded - a
    * rejected plan or a redirect comment supersedes whatever was queued as a reaction to it. */
   function hardStop(message: string, opts?: { resumeQueue?: boolean }) {
     abortControllerRef.current?.abort();
@@ -734,7 +734,7 @@ export function App({
 
     const queued = messageQueueRef.current.length;
     if (opts?.resumeQueue && queued > 0) {
-      const note = ` (running ${queued} queued message${queued === 1 ? "" : "s"} — Esc again to cancel)`;
+      const note = ` (running ${queued} queued message${queued === 1 ? "" : "s"} - Esc again to cancel)`;
       pushItem({ kind: "system", tone: "info", text: `${message}${note}` });
       void drainQueue();
       return;
@@ -750,9 +750,9 @@ export function App({
    * stops the current turn (same hardStop() every other interruption uses) and immediately
    * starts a fresh one with their comment as the next user message. isRunning is false by the
    * time hardStop() returns, so this handleSubmit() call isn't blocked by its own concurrency
-   * guard — it's a genuinely new turn, not a continuation of the interrupted one. */
+   * guard - it's a genuinely new turn, not a continuation of the interrupted one. */
   function interruptWithComment(text: string) {
-    hardStop("Interrupted — sending your comment as the next message.");
+    hardStop("Interrupted - sending your comment as the next message.");
     void handleSubmit(text);
   }
 
@@ -774,15 +774,15 @@ export function App({
     planResolveRef.current = null;
     setPlanRequest(null);
     if (approved) {
-      // exit_plan_mode's own execute() calls gate.setMode("manual") on approval — mirror that
+      // exit_plan_mode's own execute() calls gate.setMode("manual") on approval - mirror that
       // here so the status bar and the mode-aware system prompt don't stay stuck showing "plan"
       // after the gate has actually moved on.
       setMode("manual");
     } else {
       // Rejecting the plan shouldn't just feed a "not approved" result back to the model and
-      // let it keep going on its own — stop the turn here and wait for the user's actual
+      // let it keep going on its own - stop the turn here and wait for the user's actual
       // instructions on what to change.
-      hardStop("Plan not approved — stopped. Reply with what to change.");
+      hardStop("Plan not approved - stopped. Reply with what to change.");
     }
   }
 
@@ -813,10 +813,10 @@ export function App({
       return;
     }
 
-    // The loaded session remembers whichever provider/model it was originally created with —
+    // The loaded session remembers whichever provider/model it was originally created with -
     // try to switch back to a matching configured entry so it actually continues on that model.
     // If none is configured anymore, patch the loaded session's own provider/model to whatever's
-    // currently active instead of leaving them pointing at a model we're not actually using —
+    // currently active instead of leaving them pointing at a model we're not actually using -
     // loop.ts sends session.model verbatim to the live adapter, so leaving a stale mismatch there
     // would silently send the wrong model name to whichever adapter ends up active.
     let modelNote = "";
@@ -831,12 +831,12 @@ export function App({
           setActiveAdapter(newAdapter);
           setActiveModel({ provider: entry.provider, model: entry.model, label });
         } catch (err) {
-          modelNote = ` — it was originally on ${loaded.provider}/${loaded.model}; switching back failed (${err instanceof Error ? err.message : String(err)}), continuing on ${activeModel.label} instead`;
+          modelNote = ` - it was originally on ${loaded.provider}/${loaded.model}; switching back failed (${err instanceof Error ? err.message : String(err)}), continuing on ${activeModel.label} instead`;
           loaded.provider = activeModel.provider;
           loaded.model = activeModel.model;
         }
       } else {
-        modelNote = ` — it was originally on ${loaded.provider}/${loaded.model}, which isn't currently configured, so continuing on ${activeModel.label} instead`;
+        modelNote = ` - it was originally on ${loaded.provider}/${loaded.model}, which isn't currently configured, so continuing on ${activeModel.label} instead`;
         loaded.provider = activeModel.provider;
         loaded.model = activeModel.model;
       }
@@ -889,7 +889,7 @@ export function App({
   }
 
   // Only anchor the input to the bottom of a fresh, empty terminal (like Claude Code's welcome
-  // screen) — once any transcript content exists, Static output is no longer accounted for in
+  // screen) - once any transcript content exists, Static output is no longer accounted for in
   // Ink's own layout height, so keeping this on would make the "filled" area grow unbounded
   // and push the transcript off-screen.
   const fillHeight =
@@ -898,7 +898,7 @@ export function App({
       : undefined;
 
   // Prefers the provider-measured input-token count from the last turn (set on `session` by
-  // runAgentTurn, and mutated in place like `session.messages` — a memo keyed on it wouldn't
+  // runAgentTurn, and mutated in place like `session.messages` - a memo keyed on it wouldn't
   // reliably invalidate, and it's cheap to recompute every render anyway), falling back to the
   // char-heuristic estimate before the first turn and right after compaction.
   const maxContextTokens = activeAdapter.capabilities.maxContextTokens;

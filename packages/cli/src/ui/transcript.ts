@@ -11,7 +11,7 @@ import {
 } from "@usepolyglot/core";
 import type { NewDisplayItem } from "./types.js";
 
-// Mirrors agent/loop.ts's formatToolResultBlock() — the exact shape a tool result gets wrapped
+// Mirrors agent/loop.ts's formatToolResultBlock() - the exact shape a tool result gets wrapped
 // in before being fed back to the model as a "user"-role message. This is our own internal
 // serialization, never something a real user would type by hand, so matching it structurally is
 // a reliable way to tell "this user message is actually a tool result" from a genuine one.
@@ -43,7 +43,7 @@ function pushResolvedCall(
   }
 }
 
-// A structured-output completion is persisted verbatim too (see loop.ts's pushMessage call) —
+// A structured-output completion is persisted verbatim too (see loop.ts's pushMessage call) -
 // one raw JSON object (`{"message": "...", "tool_calls": [...]}`), not <tool_call>-tagged text.
 // Which shape a given historical message is in isn't recorded anywhere per-message (the model
 // may even have been switched mid-session via /model), so this is decided by trying to parse it
@@ -67,7 +67,7 @@ function parseStructuredMessage(
 
 // The free-text tag protocol: prose interleaved with <tool_call> envelopes. ToolCallStreamParser
 // is built to stream in chunks, so pushing a whole message at once can still yield several
-// consecutive "text" events (it holds back a trailing slice in case a marker was split) — those
+// consecutive "text" events (it holds back a trailing slice in case a marker was split) - those
 // need concatenating into one assistant item rather than one item per event, or a single
 // paragraph fragments into several oddly-broken boxes in the transcript.
 function parseTaggedMessage(content: string, tools: ToolRegistry): NewDisplayItem[] {
@@ -98,7 +98,7 @@ function parseAssistantMessage(content: string, tools: ToolRegistry): NewDisplay
 }
 
 /** Rebuilds the transcript display items for a session's already-persisted messages, for
- * `/resume` and `--resume` — `session.messages` only stores raw role/content pairs (an
+ * `/resume` and `--resume` - `session.messages` only stores raw role/content pairs (an
  * assistant completion's full raw text, tool_call tags and all; a "user"-role message that's
  * really a <tool_result> wrapper fed back to the model), so this reruns the same tag parsing
  * the live turn uses to turn that back into the tool_call/tool_result/assistant items the UI

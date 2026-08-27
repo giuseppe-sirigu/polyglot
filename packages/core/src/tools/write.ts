@@ -30,7 +30,7 @@ export const writeFileTool: ToolDefinition<WriteFileInput> = {
     try {
       existing = await readFile(resolved.path, { encoding: "utf8", signal: ctx.signal });
     } catch {
-      // File doesn't exist yet — diff against empty, which reads as an all-additions preview.
+      // File doesn't exist yet - diff against empty, which reads as an all-additions preview.
     }
     return { label: input.path, oldText: existing, newText: input.content };
   },

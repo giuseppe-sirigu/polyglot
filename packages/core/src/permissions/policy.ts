@@ -4,7 +4,7 @@ import { matchesAny } from "./rule-matcher.js";
 import { matchesSecretPath } from "./secret-paths.js";
 
 /** True if a tool's `path` argument, once resolved against cwd, points outside cwd. Tools
- * without a string `path` field (bash, web_fetch, glob's pattern) are left alone — this is
+ * without a string `path` field (bash, web_fetch, glob's pattern) are left alone - this is
  * scoped to the file-path tools (read/write/edit/grep) that take an explicit target path. */
 function targetsOutsideCwd(request: PermissionRequest): boolean {
   const input = request.input as Record<string, unknown> | undefined;
@@ -18,7 +18,7 @@ function targetsOutsideCwd(request: PermissionRequest): boolean {
 
 /** True if a tool's `path` argument points at something that typically holds credentials or
  * private keys (a `.env`, a `*.pem`, anything under `.ssh/`, …). Same field-scoping as
- * targetsOutsideCwd() — the file-path tools only. */
+ * targetsOutsideCwd() - the file-path tools only. */
 function targetsSecretPath(request: PermissionRequest): boolean {
   const input = request.input as Record<string, unknown> | undefined;
   const path = input && typeof input.path === "string" ? input.path : null;
@@ -39,7 +39,7 @@ export interface PolicyGateOptions {
 }
 
 /**
- * The real permission gate: manual (ask before any change — write/execute/network — with an
+ * The real permission gate: manual (ask before any change - write/execute/network - with an
  * "always allow this tool for the rest of the session" shortcut; reads are never asked about),
  * auto (allow unless deny-listed), and plan (read-only, hard override regardless of allow
  * rules). A target outside the working directory always asks, in every mode, regardless of
@@ -63,7 +63,7 @@ export class PolicyGate implements PermissionGate {
     return this.mode;
   }
 
-  /** Transitions out of (or into) plan mode — used once a proposed plan is approved. */
+  /** Transitions out of (or into) plan mode - used once a proposed plan is approved. */
   setMode(mode: PermissionMode): void {
     this.mode = mode;
   }
@@ -74,7 +74,7 @@ export class PolicyGate implements PermissionGate {
     }
 
     // Plan mode is for research, not mutation: read-only tools and network reads (web_fetch,
-    // web_search — GETs with no local side effects) run; write/execute stay blocked until a
+    // web_search - GETs with no local side effects) run; write/execute stay blocked until a
     // plan is approved.
     if (this.mode === "plan" && request.category !== "read" && request.category !== "network") {
       return {
@@ -104,7 +104,7 @@ export class PolicyGate implements PermissionGate {
       );
     }
 
-    // A credentials/key file always needs a human's eyes on it too — reading one pulls its
+    // A credentials/key file always needs a human's eyes on it too - reading one pulls its
     // contents into the model's context (and on to the provider), so the "reads within cwd
     // never prompt" fast path below must not apply here.
     if (targetsSecretPath(request)) {
@@ -121,7 +121,7 @@ export class PolicyGate implements PermissionGate {
       );
     }
 
-    // Read-only tools within the working directory never need a prompt, in any mode — manual
+    // Read-only tools within the working directory never need a prompt, in any mode - manual
     // mode is about gating changes (writes/execute/network), not gating looking around.
     if (request.category === "read") {
       return { decision: "allow" };

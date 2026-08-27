@@ -42,7 +42,7 @@ export function buildEnvelopeSchema(tools: ToolDefinition[]): JsonSchema {
         type: "array",
         // An empty `oneOf` is valid-but-undefined-behavior for a grammar generator (which
         // compiles the schema into a token grammar ahead of time) even though a plain
-        // JSON-Schema validator handles it fine — force an empty array unambiguously instead.
+        // JSON-Schema validator handles it fine - force an empty array unambiguously instead.
         items: variants.length > 0 ? { oneOf: variants } : { not: {} },
         ...(variants.length === 0 ? { maxItems: 0 } : {}),
       },
@@ -55,7 +55,7 @@ export function buildEnvelopeSchema(tools: ToolDefinition[]): JsonSchema {
 /**
  * Parses one structured-mode completion into a StructuredEnvelope. Tries repairJson() as a
  * single bounded repair attempt (the same tolerance the free-text path already applies to tool
- * call bodies) — beyond that, a failure here means the backend isn't actually honoring the
+ * call bodies) - beyond that, a failure here means the backend isn't actually honoring the
  * response schema, which callers should surface as a distinct, explicit error rather than
  * silently retrying.
  */

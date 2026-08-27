@@ -2,7 +2,7 @@
   "name": "@usepolyglot/monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "Workspace root for Polyglot. Not published — see packages/cli.",
+  "description": "Workspace root for Polyglot. Not published - see packages/cli.",
   "license": "FSL-1.1-ALv2",
   "engines": {
     "node": ">=20"

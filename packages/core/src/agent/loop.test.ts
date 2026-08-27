@@ -7,7 +7,7 @@ import type { AgentEvent } from "./events.js";
 import { runAgentTurn } from "./loop.js";
 
 /** A ProviderAdapter whose chat() replays one scripted full-text completion per call, as a
- * single text_delta followed by message_stop — enough to drive runAgentTurn's structured-mode
+ * single text_delta followed by message_stop - enough to drive runAgentTurn's structured-mode
  * branch without a real HTTP call. */
 function fakeStructuredAdapter(responses: string[]): ProviderAdapter {
   let i = 0;

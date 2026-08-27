@@ -1,4 +1,4 @@
-/** Minimal HTML → text helpers shared by web_fetch and web_search. Not a real parser — good
+/** Minimal HTML → text helpers shared by web_fetch and web_search. Not a real parser - good
  * enough to turn a page or a search-result fragment into readable plain text. */
 
 export function decodeEntities(text: string): string {
@@ -14,7 +14,7 @@ export function decodeEntities(text: string): string {
     .replace(/&apos;/g, "'");
 }
 
-/** Strips tags and collapses whitespace — for a whole document. */
+/** Strips tags and collapses whitespace - for a whole document. */
 export function htmlToText(html: string): string {
   return decodeEntities(
     html
@@ -27,7 +27,7 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
-/** Strips tags and collapses all whitespace to single spaces — for a short inline fragment
+/** Strips tags and collapses all whitespace to single spaces - for a short inline fragment
  * (a link label, a result snippet). */
 export function stripTags(html: string): string {
   return decodeEntities(html.replace(/<[^>]+>/g, " "))

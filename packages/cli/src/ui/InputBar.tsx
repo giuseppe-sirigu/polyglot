@@ -9,8 +9,8 @@ export interface InputBarProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
-  /** True while a turn is in progress. Input stays fully typable either way — submitting while
-   * busy queues the message instead of starting a second turn — this only affects styling and
+  /** True while a turn is in progress. Input stays fully typable either way - submitting while
+   * busy queues the message instead of starting a second turn - this only affects styling and
    * the hint line below the box. */
   disabled: boolean;
   queuedCount: number;

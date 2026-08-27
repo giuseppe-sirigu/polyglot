@@ -5,7 +5,7 @@ const MAX_OUTPUT_CHARS = 20_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 const IS_WINDOWS = process.platform === "win32";
-/** PowerShell (not cmd.exe) on Windows — it supports many POSIX-like aliases
+/** PowerShell (not cmd.exe) on Windows - it supports many POSIX-like aliases
  * (ls, cat, cp, rm, pwd, ...) so commands a model writes out of habit are far
  * more likely to still work than they would under cmd.exe. */
 const SHELL = IS_WINDOWS ? "powershell.exe" : "/bin/bash";
@@ -56,7 +56,7 @@ export const bashTool: ToolDefinition<BashInput> = {
           }
         },
       );
-      // Commands run here are never interactive — close stdin immediately so a script that
+      // Commands run here are never interactive - close stdin immediately so a script that
       // blocks on input (e.g. a model-generated `read -p ...`) gets EOF right away instead of
       // hanging forever on a pipe nobody will ever write to.
       child.stdin?.end();

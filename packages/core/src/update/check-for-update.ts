@@ -5,7 +5,7 @@ export interface UpdateCheckResult {
 }
 
 /** Compares dotted version strings (e.g. "1.2.3"); non-numeric/missing segments count as 0.
- * Deliberately simple — good enough for standard X.Y.Z releases, not full semver
+ * Deliberately simple - good enough for standard X.Y.Z releases, not full semver
  * (prerelease/build metadata) which isn't needed for a "should I nudge the user" check. */
 function isNewerVersion(latest: string, current: string): boolean {
   const parse = (v: string) => v.split(".").map((n) => Number.parseInt(n, 10) || 0);
@@ -18,8 +18,8 @@ function isNewerVersion(latest: string, current: string): boolean {
 
 /**
  * Checks the npm registry for the latest published version of `packageName`.
- * Fails silently (returns null) on any error — offline, package not yet
- * published, registry hiccup — since this is a best-effort nudge, never
+ * Fails silently (returns null) on any error - offline, package not yet
+ * published, registry hiccup - since this is a best-effort nudge, never
  * something that should block or disrupt startup.
  */
 export async function checkForUpdate(

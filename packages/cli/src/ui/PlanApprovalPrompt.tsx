@@ -7,7 +7,7 @@ import { theme } from "./theme.js";
 export interface PlanApprovalPromptProps {
   plan: string;
   onRespond: (approved: boolean) => void;
-  /** Fires instead of onRespond when the user picks "Comment" and types something — the caller
+  /** Fires instead of onRespond when the user picks "Comment" and types something - the caller
    * is expected to treat the plan as not approved and feed the text back in as the user's next
    * message, rather than resolving it with a plain yes/no. */
   onComment: (text: string) => void;
@@ -26,7 +26,7 @@ const DEFAULT_CURSOR = OPTIONS.findIndex((o) => o.kind === "response" && o.appro
 
 export function PlanApprovalPrompt({ plan, onRespond, onComment }: PlanApprovalPromptProps) {
   // Defaults to "Keep planning" so a bare Enter (no arrow navigation) behaves exactly like it
-  // always has — a safe default, not an accidental approval.
+  // always has - a safe default, not an accidental approval.
   const [cursor, setCursor] = useState(DEFAULT_CURSOR);
   const [commenting, setCommenting] = useState(false);
   const [commentText, setCommentText] = useState("");
@@ -60,7 +60,7 @@ export function PlanApprovalPrompt({ plan, onRespond, onComment }: PlanApprovalP
       return;
     }
     // Direct letter shortcuts still work regardless of where the cursor is, independent of
-    // arrow navigation — this is on top of it, not a replacement.
+    // arrow navigation - this is on top of it, not a replacement.
     const lower = input.toLowerCase();
     if (lower === "c") {
       setCommenting(true);
@@ -85,7 +85,7 @@ export function PlanApprovalPrompt({ plan, onRespond, onComment }: PlanApprovalP
       {commenting ? (
         <Box flexDirection="column" marginTop={1}>
           <Text dimColor>
-            Type what you'd like changed — enter to send and stop planning, esc to go back:
+            Type what you'd like changed - enter to send and stop planning, esc to go back:
           </Text>
           <Box borderStyle="round" borderColor={theme.signal} paddingX={1} marginTop={1}>
             <Text color={theme.signal}>› </Text>

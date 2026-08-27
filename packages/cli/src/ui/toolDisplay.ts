@@ -11,8 +11,8 @@ export function truncate(text: string, max: number): string {
   return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed;
 }
 
-/** Renders a short, tool-specific one-line description of a call's arguments — e.g.
- * `Read(src/app.ts)` instead of a raw JSON dump — so the transcript reads like a log of what
+/** Renders a short, tool-specific one-line description of a call's arguments - e.g.
+ * `Read(src/app.ts)` instead of a raw JSON dump - so the transcript reads like a log of what
  * happened rather than an API trace. Falls back to name + truncated JSON for unknown tools
  * (MCP tools, anything added later) so nothing goes undescribed. */
 export function describeToolCall(name: string, input: unknown): string {

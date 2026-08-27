@@ -42,7 +42,7 @@ export interface SelfUpdateResult {
   message: string;
 }
 
-/** Runs the actual global reinstall. Never throws — always resolves with a
+/** Runs the actual global reinstall. Never throws - always resolves with a
  * result the caller can show to the user, since a failed background update
  * should never crash or block the app. */
 export async function runSelfUpdate(packageName: string): Promise<SelfUpdateResult> {
