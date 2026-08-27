@@ -1,14 +1,15 @@
 {
-  "name": "polyglot",
-  "version": "0.1.0",
+  "name": "@usepolyglot/monorepo",
+  "version": "0.0.0",
   "private": true,
-  "description": "A model-agnostic coding-agent CLI that works reliably with frontier and open-weight models alike.",
+  "description": "Workspace root for Polyglot. Not published — see packages/cli.",
   "license": "FSL-1.1-ALv2",
   "engines": {
     "node": ">=20"
   },
   "packageManager": "pnpm@10.28.0",
   "scripts": {
+    "prepublishOnly": "echo 'The workspace root is not publishable. Run: pnpm publish:manual' && exit 1",
     "build": "pnpm -r run build",
     "dev": "pnpm --filter @usepolyglot/cli run dev",
     "typecheck": "pnpm -r run typecheck",
