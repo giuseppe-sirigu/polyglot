@@ -1,5 +1,11 @@
 # @usepolyglot/cli
 
+## 0.1.3
+
+### Patch Changes
+
+- Add a package README so npmjs.com shows install and quick-start docs instead of "This package does not have a README".
+
 ## 0.1.2
 
 ### Patch Changes
