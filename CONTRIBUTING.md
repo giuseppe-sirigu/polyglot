@@ -33,6 +33,8 @@ branding/  # logo assets
 
 End-user documentation lives at [usepolyglot.dev/docs](https://usepolyglot.dev/docs) (source in a separate, private website repo). **If your change alters user-facing behavior - a flag, a setting, a command, a default - call that out in the PR description so the docs get updated alongside it.**
 
+The repo-root `README.md` is the only one to edit. `packages/cli/README.md` (what npmjs.com shows) is generated from it at pack time by `scripts/gen-cli-readme.mjs` - which rewrites repo-relative links to absolute GitHub URLs - and is git-ignored.
+
 ## Before opening a PR
 
 ```bash
