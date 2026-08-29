@@ -134,12 +134,14 @@ export function MultilineTextInput({
       return;
     }
 
-    // Alt+Enter arrives as the 2-byte sequence ESC+CR: Ink can't tell it apart from other
-    // escape-prefixed input at the key-name level, so `key.return` stays false (a real Enter
-    // sets it true) while `input` collapses to a bare "\r" - that combination is what
-    // distinguishes this case from everything else.
-    if (input === "\r") {
-      apply(`${text.slice(0, cursor)}\n${text.slice(cursor)}`, cursor + 1);
+    // Newlines reach us as carriage returns: a bare "\r" for Alt+Enter (ESC+CR, so `key.return`
+    // stays false - a real Enter sets it true), and CR / CRLF runs inside pasted multi-line
+    // text. Both are handled here, before the ctrl/meta guard below (which would otherwise drop
+    // the Alt+Enter case): an unconverted "\r" left in the buffer renders as a literal carriage
+    // return that yanks the terminal cursor to column 0 and mangles the input box.
+    if (input.includes("\r")) {
+      const insert = input.replace(/\r\n?/g, "\n");
+      apply(text.slice(0, cursor) + insert + text.slice(cursor), cursor + insert.length);
       return;
     }
 
