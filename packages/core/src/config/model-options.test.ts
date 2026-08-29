@@ -64,6 +64,24 @@ describe("resolveEngineConfigForModel", () => {
     const entry: ModelEntry = { provider: "anthropic", model: "m", structuredOutput: true };
     expect(resolveEngineConfigForModel(entry, {}).structuredOutput).toBeUndefined();
   });
+
+  it("falls back to the top-level structuredOutput default when the entry omits it", () => {
+    const entry: ModelEntry = { provider: "openai-compatible", model: "qwen3-coder" };
+    expect(
+      resolveEngineConfigForModel(entry, {}, { structuredOutput: true }).structuredOutput,
+    ).toBe(true);
+  });
+
+  it("lets an explicit entry structuredOutput override the top-level default", () => {
+    const entry: ModelEntry = {
+      provider: "openai-compatible",
+      model: "m",
+      structuredOutput: false,
+    };
+    expect(
+      resolveEngineConfigForModel(entry, {}, { structuredOutput: true }).structuredOutput,
+    ).toBe(false);
+  });
 });
 
 describe("listModelOptions", () => {

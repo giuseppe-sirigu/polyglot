@@ -88,6 +88,7 @@ You must respond with a single JSON object matching this shape:
 
 - "message": your natural-language reply to show the user this turn. Use "" if this turn is only tool calls.
 - "tool_calls": zero or more tool invocations to run this turn. Each entry's "arguments" must match that tool's own schema below. Use [] if you have nothing to call.
+- Do not describe a tool call in "message" instead of making it - if you decide to use a tool, put it in "tool_calls". Writing out an edit, command, or file as a code block in "message" does nothing; the change only happens when you emit the actual tool call.
 - Only the tools listed below exist - "name" must be exactly one of them.
 - After tool_calls run, their results are given back to you as a new message; you'll be asked to produce another JSON object of this same shape. Keep going until there's nothing left to do, then return an empty tool_calls array with your final message.${platformNote}${planModeNote}
 

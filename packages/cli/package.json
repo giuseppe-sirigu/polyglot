@@ -24,7 +24,8 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dev": "tsx src/main.ts"
+    "dev": "tsx src/main.ts",
+    "prepack": "node ../../scripts/gen-cli-readme.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

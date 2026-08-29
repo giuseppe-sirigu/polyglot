@@ -10,6 +10,7 @@ const WORDS = [
   " thinking…",
   " pensando…", // Spanish
   " sto pensando…", // Italian
+  " Razmišljam…", // Bosnian
   " 思考中…", // Mandarin
   " सोच रहा है…", // Hindi
   " je réfléchis…", // French

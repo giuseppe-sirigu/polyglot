@@ -4,10 +4,16 @@ import type { ModelEntry } from "./schema.js";
 
 /** Fills in an entry's `apiKey` (via the same provider-conditional env var resolution
  * loadConfig() uses for the top-level engine) and default `baseURL` for openai-compatible, so
- * the result can be passed straight to createProviderAdapter(). */
+ * the result can be passed straight to createProviderAdapter().
+ *
+ * `defaults` carries the resolved top-level settings so a `/model` switch keeps whatever the
+ * session started with unless the entry overrides it - mirroring loadConfig()'s "per-model
+ * field wins, else top-level" merge. Without this, switching models silently drops a top-level
+ * `structuredOutput: true` (entries rarely repeat it) and falls back to free-text tool calling. */
 export function resolveEngineConfigForModel(
   entry: ModelEntry,
   env: NodeJS.ProcessEnv = process.env,
+  defaults?: { structuredOutput?: boolean },
 ): EngineConfig {
   return {
     provider: entry.provider,
@@ -17,7 +23,10 @@ export function resolveEngineConfigForModel(
         ? (entry.baseURL ?? "http://localhost:11434/v1")
         : undefined,
     apiKey: resolveApiKey(entry.provider, entry.apiKey, env),
-    structuredOutput: entry.provider === "openai-compatible" ? entry.structuredOutput : undefined,
+    structuredOutput:
+      entry.provider === "openai-compatible"
+        ? (entry.structuredOutput ?? defaults?.structuredOutput)
+        : undefined,
   };
 }
 
