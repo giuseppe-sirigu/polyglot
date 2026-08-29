@@ -1,5 +1,17 @@
 # @usepolyglot/cli
 
+## 0.2.0
+
+### Minor Changes
+
+- 2072d37: tell structured-mode models not to describe tool calls in prose
+- f8d5c44: Flipping permission modes (Shift+Tab) or models (`/model`) several times in a row now overwrites a single "Switched to …" line instead of stacking one per flip. The thinking indicator stays pinned below the turn's streamed text and tool calls so new output no longer pushes it out of view.
+
+### Patch Changes
+
+- 64e4a6a: Keep structured tool-calling after a `/model` switch: the per-model config no longer drops a top-level `structuredOutput` setting when the chosen entry doesn't repeat it.
+- adfba52: Pasting multi-line text into the input box no longer mangles the box border: carriage returns from the paste are converted to newlines instead of being inserted literally.
+
 ## 0.1.3
 
 ### Patch Changes

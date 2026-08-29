@@ -1,6 +1,6 @@
 {
   "name": "@usepolyglot/cli",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "private": false,
   "description": "A coding-agent CLI that works the same way whether the model is Claude, GPT, or an open-weight model like Qwen, DeepSeek, GLM, or Llama running locally.",
   "license": "FSL-1.1-ALv2",
