@@ -102,6 +102,9 @@ export function App({
   const streamFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [mode, setMode] = useState<PermissionMode>(resolved.permissions.mode);
+  // A "Switched to ..." breadcrumb for a permission-mode or model change - see noteSwitch().
+  const [switchNotice, setSwitchNotice] = useState<string | null>(null);
+  const switchNoticeRef = useRef<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [approvalRequest, setApprovalRequest] = useState<PermissionRequest | null>(null);
   const approvalResolveRef = useRef<((response: ApprovalResponse) => void) | null>(null);
@@ -162,6 +165,23 @@ export function App({
   function pushItem(item: NewDisplayItem) {
     const id = String(nextId.current++);
     setItems((prev) => [...prev, { ...item, id } as DisplayItem]);
+  }
+
+  /** Records a "Switched to ..." line for a Shift+Tab mode cycle or a `/model` change. It's held
+   * in the live region rather than pushed straight to the Static transcript (which can't
+   * un-print), so flipping modes/models several times in a row just overwrites it - only the
+   * latest shows. commitSwitchNotice() moves whatever it settled on into the permanent
+   * transcript once some other action happens. */
+  function noteSwitch(text: string) {
+    switchNoticeRef.current = text;
+    setSwitchNotice(text);
+  }
+
+  function commitSwitchNotice() {
+    if (switchNoticeRef.current === null) return;
+    pushItem({ kind: "system", tone: "info", text: switchNoticeRef.current });
+    switchNoticeRef.current = null;
+    setSwitchNotice(null);
   }
 
   // Tool calls/results for the round currently in progress: held here (not in `items`, so not
@@ -420,7 +440,7 @@ export function App({
       const next = MODE_ORDER[(MODE_ORDER.indexOf(mode) + 1) % MODE_ORDER.length] as PermissionMode;
       gate.setMode(next);
       setMode(next);
-      pushItem({ kind: "system", tone: "info", text: `Switched to ${next} mode` });
+      noteSwitch(`Switched to ${next} mode`);
     }
   });
 
@@ -441,6 +461,8 @@ export function App({
     nextId.current = 0;
     setItems([]);
     clearMessageQueue();
+    switchNoticeRef.current = null;
+    setSwitchNotice(null);
   }
 
   /** The actual entry point wired to InputBar's onSubmit. Never blocked by isRunning - typing
@@ -487,6 +509,10 @@ export function App({
   }
 
   async function runTurnBody(value: string) {
+    // A real action is happening now, so a pending mode/model breadcrumb is final - commit it
+    // to the permanent transcript ahead of this turn's own output.
+    commitSwitchNotice();
+
     if (value === "/exit" || value === "/quit") {
       exit();
       return;
@@ -826,7 +852,11 @@ export function App({
       );
       if (entry) {
         try {
-          const newAdapter = createProviderAdapter(resolveEngineConfigForModel(entry));
+          const newAdapter = createProviderAdapter(
+            resolveEngineConfigForModel(entry, undefined, {
+              structuredOutput: resolved.engine.structuredOutput,
+            }),
+          );
           const label = entry.label ?? entry.model;
           setActiveAdapter(newAdapter);
           setActiveModel({ provider: entry.provider, model: entry.model, label });
@@ -859,17 +889,21 @@ export function App({
 
   function switchToModel(match: ModelOption) {
     if (match.isCurrent || !match.entry) {
-      pushItem({ kind: "system", tone: "info", text: `Already on ${match.label}.` });
+      noteSwitch(`Already on ${match.label}.`);
       return;
     }
     const entry: ModelEntry = match.entry;
     try {
-      const newAdapter = createProviderAdapter(resolveEngineConfigForModel(entry));
+      const newAdapter = createProviderAdapter(
+        resolveEngineConfigForModel(entry, undefined, {
+          structuredOutput: resolved.engine.structuredOutput,
+        }),
+      );
       session.model = match.model;
       session.provider = match.provider;
       setActiveAdapter(newAdapter);
       setActiveModel({ provider: match.provider, model: match.model, label: match.label });
-      pushItem({ kind: "system", tone: "info", text: `Switched to ${match.label}.` });
+      noteSwitch(`Switched to ${match.label}.`);
     } catch (err) {
       pushItem({
         kind: "system",
@@ -926,15 +960,24 @@ export function App({
         }
       </Static>
 
+      {switchNotice !== null ? (
+        <TranscriptLine
+          item={{ kind: "system", tone: "info", id: "__switch_notice__", text: switchNotice }}
+        />
+      ) : null}
+
       {streamingText ? <Box marginTop={1}>{renderMarkdown(streamingText)}</Box> : null}
-      {isRunning && !streamingText ? (
+
+      <LiveToolLog items={liveTurnItems} />
+
+      {/* The thinking indicator stays pinned below the live turn's output (streamed text and
+          tool calls) so freshly added lines never push it out of view. */}
+      {isRunning ? (
         <Box marginTop={1}>
           <Spinner />
           <ThinkingLabel />
         </Box>
       ) : null}
-
-      <LiveToolLog items={liveTurnItems} />
 
       {messageQueue.length > 0 ? (
         <Box flexDirection="column" marginTop={1}>
