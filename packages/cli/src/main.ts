@@ -11,6 +11,7 @@ import { render } from "ink";
 import { createElement } from "react";
 import { HELP_TEXT, parseCliArgs } from "./args.js";
 import { runHeadless } from "./headless.js";
+import { applyCapabilityProbe } from "./probe.js";
 import { App } from "./ui/App.js";
 
 async function main() {
@@ -35,7 +36,11 @@ async function main() {
     return;
   }
 
-  const adapter = createProviderAdapter(resolved.engine);
+  const { adapter, note: probeNote } = await applyCapabilityProbe(
+    createProviderAdapter(resolved.engine),
+    resolved,
+    { force: cliArgs.probe },
+  );
 
   let session: Awaited<ReturnType<typeof createSession>>;
   let resumed = false;
@@ -69,7 +74,9 @@ async function main() {
     process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
   }
 
-  const instance = render(createElement(App, { resolved, adapter, session, resumed, mcp }));
+  const instance = render(
+    createElement(App, { resolved, adapter, session, resumed, mcp, probeNote }),
+  );
   await instance.waitUntilExit();
   await mcp?.close();
 }

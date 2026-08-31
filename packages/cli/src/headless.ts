@@ -29,6 +29,7 @@ import {
   writeFileTool,
 } from "@usepolyglot/core";
 import type { CliArgs } from "./args.js";
+import { applyCapabilityProbe } from "./probe.js";
 
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
@@ -66,7 +67,12 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     return 1;
   }
 
-  const adapter = createProviderAdapter(resolved.engine);
+  const { adapter, note: probeNote } = await applyCapabilityProbe(
+    createProviderAdapter(resolved.engine),
+    resolved,
+    { force: args.probe },
+  );
+  if (probeNote) process.stderr.write(`[polyglot] ${probeNote}\n`);
   const persist = resolved.persistTranscripts;
 
   let session: Session;

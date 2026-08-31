@@ -82,6 +82,8 @@ export interface AppProps {
   session: Session;
   resumed: boolean;
   mcp: McpConnectResult | null;
+  /** One-line result of the startup capability probe (--probe), shown once on mount. */
+  probeNote?: string;
 }
 
 export function App({
@@ -90,6 +92,7 @@ export function App({
   session: initialSession,
   resumed,
   mcp,
+  probeNote,
 }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -321,6 +324,9 @@ export function App({
 
   if (!startedRef.current) {
     startedRef.current = true;
+    if (probeNote) {
+      pushItem({ kind: "system", tone: "info", text: probeNote });
+    }
     if (resumed) {
       pushItem({
         kind: "system",
