@@ -11,9 +11,9 @@ import {
   type Session,
   type SessionSummary,
   type UserQuestionRequest,
+  assembleSystemPrompt,
   bashTool,
   buildAgentTools,
-  buildToolSystemPrompt,
   checkForUpdate,
   compactSession,
   createAskUserQuestionTool,
@@ -73,9 +73,6 @@ interface ActiveModel {
   model: string;
   label: string;
 }
-
-const PERSONA =
-  "You are polyglot, a concise coding assistant that works the same way regardless of which model is answering.";
 
 const MODE_ORDER: PermissionMode[] = ["manual", "auto", "plan"];
 
@@ -311,16 +308,16 @@ export function App({
     return built;
   }, [activeAdapter, activeModel.model, session.cwd]);
 
-  const systemPrompt = useMemo(() => {
-    // exit_plan_mode/ask_user_question are always in the registry (so calling them never
-    // fails with "Unknown tool"), but only worth advertising to the model while actually in
-    // plan mode - showing them elsewhere just invites confusion about when to use them.
-    const promptTools =
-      mode === "plan"
-        ? tools.list()
-        : tools.list().filter((t) => t.name !== "exit_plan_mode" && t.name !== "ask_user_question");
-    return `${PERSONA}\n\n${buildToolSystemPrompt(promptTools, session.cwd, mode, { structured: activeAdapter.capabilities.structuredOutput })}`;
-  }, [tools, session.cwd, mode, activeAdapter.capabilities.structuredOutput]);
+  const systemPrompt = useMemo(
+    () =>
+      assembleSystemPrompt({
+        tools: tools.list(),
+        cwd: session.cwd,
+        mode,
+        structured: activeAdapter.capabilities.structuredOutput,
+      }),
+    [tools, session.cwd, mode, activeAdapter.capabilities.structuredOutput],
+  );
 
   if (!startedRef.current) {
     startedRef.current = true;
