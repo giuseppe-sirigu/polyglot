@@ -27,6 +27,10 @@ export const SettingsSchema = z.object({
   /** Opt-in grammar/schema-constrained decoding for the openai-compatible provider - see
    * ChatRequest.responseSchema. Inert (ignored) when provider is "anthropic". */
   structuredOutput: z.boolean().optional(),
+  /** Opt-in: on startup, ping the openai-compatible endpoint once to learn its real context
+   * window and whether it actually honors structured output, caching the result in
+   * ~/.polyglot/capabilities.json. `--probe` forces a fresh probe. Off by default. */
+  probeCapabilities: z.boolean().optional(),
   /** Selectable via the `/model` command at runtime - session-local only, never rewritten to
    * disk. See config/model-options.ts. */
   models: z.array(ModelEntrySchema).default([]),

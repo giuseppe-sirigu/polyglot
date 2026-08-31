@@ -36,8 +36,25 @@ export {
 } from "./permissions/secret-paths.js";
 export { connectAllMcpServers } from "./mcp/manager.js";
 export type { McpConnectResult } from "./mcp/manager.js";
-export { createProviderAdapter } from "./providers/registry.js";
-export type { ProviderAdapter } from "./providers/types.js";
+export {
+  createProviderAdapter,
+  registerProvider,
+  getRegisteredProviders,
+} from "./providers/registry.js";
+export type {
+  ProviderAdapter,
+  ProviderCapabilities,
+  ProviderFactory,
+} from "./providers/types.js";
+export {
+  probeCapabilities,
+  probeResultToCapabilities,
+  parseModelsContextLength,
+  capabilityCacheKey,
+  loadCachedCapabilities,
+  saveCachedCapabilities,
+} from "./providers/probe.js";
+export type { ProbeResult } from "./providers/probe.js";
 export { createSession } from "./session/types.js";
 export type { Message, Session } from "./session/types.js";
 export {

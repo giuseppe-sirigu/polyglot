@@ -56,6 +56,11 @@ describe("parseCliArgs", () => {
     expect(parseCliArgs(["-p", "--no-persist", "hi"]).noPersist).toBe(true);
   });
 
+  it("parses --probe", () => {
+    expect(parseCliArgs([]).probe).toBe(false);
+    expect(parseCliArgs(["--probe"]).probe).toBe(true);
+  });
+
   it("throws on an invalid --permission-mode value", () => {
     expect(() => parseCliArgs(["-p", "--permission-mode", "yolo"])).toThrow(/permission-mode/);
   });

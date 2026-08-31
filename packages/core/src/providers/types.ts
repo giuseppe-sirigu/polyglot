@@ -1,3 +1,4 @@
+import type { EngineConfig } from "../config/loader.js";
 import type { JsonSchema } from "../tools/types.js";
 
 export interface ChatMessage {
@@ -36,3 +37,12 @@ export interface ProviderAdapter {
   readonly capabilities: ProviderCapabilities;
   chat(request: ChatRequest, opts: { signal: AbortSignal }): AsyncIterable<ProviderStreamEvent>;
 }
+
+/** Builds an adapter for one `EngineConfig`. `capabilityOverrides` (only the defined keys)
+ * are applied over the factory's built-in defaults - used to feed in results from a live
+ * capability probe (see providers/probe.ts). Register with `registerProvider` in
+ * providers/registry.ts. */
+export type ProviderFactory = (
+  config: EngineConfig,
+  capabilityOverrides?: Partial<ProviderCapabilities>,
+) => ProviderAdapter;

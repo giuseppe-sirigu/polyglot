@@ -20,6 +20,8 @@ export interface CliArgs {
   resume: boolean;
   /** The session id token following --resume, when present. */
   resumeId?: string;
+  /** --probe: force a fresh capability probe of the endpoint on startup (openai-compatible). */
+  probe: boolean;
 }
 
 export const HELP_TEXT = `polyglot - a model-agnostic coding-agent CLI
@@ -36,6 +38,7 @@ Options:
       --permission-mode <mode>  print-mode: "manual", "auto", or "plan"
       --no-persist              write nothing to ~/.polyglot/ (ephemeral session)
       --resume [session-id]     resume the most recent session, or one by id
+      --probe                   ping the endpoint to detect its real capabilities
   -v, --version                print the version and exit
   -h, --help                   print this help and exit
 
@@ -55,6 +58,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
     allowAll: false,
     noPersist: false,
     resume: false,
+    probe: false,
   };
   const positional: string[] = [];
 
@@ -78,6 +82,9 @@ export function parseCliArgs(argv: string[]): CliArgs {
         break;
       case "--no-persist":
         args.noPersist = true;
+        break;
+      case "--probe":
+        args.probe = true;
         break;
       case "--output-format": {
         const value = argv[++i];

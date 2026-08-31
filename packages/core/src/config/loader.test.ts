@@ -79,6 +79,27 @@ describe("loadConfig structuredOutput", () => {
   });
 });
 
+describe("loadConfig probeCapabilities", () => {
+  it("defaults to undefined and resolves from settings", () => {
+    expect(
+      loadWithSettings({ provider: "openai-compatible", model: "m" }, null).probeCapabilities,
+    ).toBeUndefined();
+    expect(
+      loadWithSettings({ provider: "openai-compatible", model: "m", probeCapabilities: true }, null)
+        .probeCapabilities,
+    ).toBe(true);
+  });
+
+  it("POLYGLOT_PROBE overrides settings", () => {
+    const config = loadWithSettings(
+      { provider: "openai-compatible", model: "m", probeCapabilities: true },
+      null,
+      { POLYGLOT_PROBE: "0" },
+    );
+    expect(config.probeCapabilities).toBe(false);
+  });
+});
+
 describe("loadConfig models", () => {
   it("defaults to an empty list when unset anywhere", () => {
     const config = loadWithSettings({ provider: "openai-compatible", model: "m" }, null);
