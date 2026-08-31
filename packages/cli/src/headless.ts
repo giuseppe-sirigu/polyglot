@@ -4,9 +4,9 @@ import {
   PolicyGate,
   type ResolvedConfig,
   type Session,
+  assembleSystemPrompt,
   bashTool,
   buildAgentTools,
-  buildToolSystemPrompt,
   connectAllMcpServers,
   createAskUserQuestionTool,
   createExitPlanModeTool,
@@ -29,9 +29,6 @@ import {
   writeFileTool,
 } from "@usepolyglot/core";
 import type { CliArgs } from "./args.js";
-
-const PERSONA =
-  "You are polyglot, a concise coding assistant that works the same way regardless of which model is answering.";
 
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
@@ -145,13 +142,12 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     tools.register(createExitPlanModeTool(gate, async () => false, "manual", persist));
   }
 
-  const promptTools =
-    mode === "plan"
-      ? tools.list()
-      : tools.list().filter((t) => t.name !== "exit_plan_mode" && t.name !== "ask_user_question");
-  const systemPrompt = `${PERSONA}\n\n${buildToolSystemPrompt(promptTools, session.cwd, mode, {
+  const systemPrompt = assembleSystemPrompt({
+    tools: tools.list(),
+    cwd: session.cwd,
+    mode,
     structured: adapter.capabilities.structuredOutput,
-  })}`;
+  });
 
   const controller = new AbortController();
   const onSigint = () => controller.abort();

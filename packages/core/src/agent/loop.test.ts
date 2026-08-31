@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AllowAllGate } from "../permissions/gate.js";
-import type { ProviderAdapter, ProviderStreamEvent } from "../providers/types.js";
+import type { ChatRequest, ProviderAdapter, ProviderStreamEvent } from "../providers/types.js";
 import { type Session, createSession } from "../session/types.js";
 import { type ToolDefinition, ToolRegistry, textResult } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
@@ -9,12 +9,16 @@ import { runAgentTurn } from "./loop.js";
 /** A ProviderAdapter whose chat() replays one scripted full-text completion per call, as a
  * single text_delta followed by message_stop - enough to drive runAgentTurn's structured-mode
  * branch without a real HTTP call. */
-function fakeStructuredAdapter(responses: string[]): ProviderAdapter {
+function fakeStructuredAdapter(
+  responses: string[],
+  onRequest?: (request: ChatRequest) => void,
+): ProviderAdapter {
   let i = 0;
   return {
     id: "fake",
     capabilities: { nativeToolCalling: "none", maxContextTokens: 100_000, structuredOutput: true },
-    async *chat(): AsyncIterable<ProviderStreamEvent> {
+    async *chat(request: ChatRequest): AsyncIterable<ProviderStreamEvent> {
+      onRequest?.(request);
       const text = responses[i++];
       if (text === undefined)
         throw new Error("fakeStructuredAdapter: ran out of scripted responses");
@@ -115,6 +119,22 @@ describe("runAgentTurn structured mode", () => {
 
     expect(events.some((e) => e.type === "text_delta")).toBe(false);
     expect(events.at(-1)).toEqual({ type: "agent_stop", reason: "done" });
+  });
+
+  it("passes the envelope response schema to the adapter whenever it reports structuredOutput", async () => {
+    const requests: ChatRequest[] = [];
+    const adapter = fakeStructuredAdapter(
+      [JSON.stringify({ message: "hi", tool_calls: [] })],
+      (r) => requests.push(r),
+    );
+
+    await run(adapter, buildRegistry());
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.responseSchema).toBeDefined();
+    expect(requests[0]?.responseSchema).toMatchObject({
+      properties: { message: expect.anything(), tool_calls: expect.anything() },
+    });
   });
 
   it("persists the full envelope (including tool_calls), not just the prose message, so the model can see its own prior calls on later turns", async () => {
