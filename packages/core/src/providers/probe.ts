@@ -28,7 +28,9 @@ function probeSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortS
 }
 
 function trimTrailingSlash(url: string): string {
-  return url.replace(/\/+$/, "");
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47 /* "/" */) end--;
+  return url.slice(0, end);
 }
 
 /**
