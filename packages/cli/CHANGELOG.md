@@ -1,5 +1,16 @@
 # @usepolyglot/cli
 
+## 0.3.0
+
+### Minor Changes
+
+- 08f61ac: Opt-in audit log: set `"audit": { "enabled": true }` in settings (or `POLYGLOT_AUDIT=1`) to record every tool call, permission decision, tool result, token-usage report and stop reason as canonical JSONL under `~/.polyglot/audit/<session>.jsonl`, one file per session. Each record carries an ISO timestamp, the session id, and the model; tool-call arguments and tool results are stored as SHA-256 hashes by default (`"hashArgs": false` keeps raw args). Files respect `retentionDays`. Also adds a `permission_decision` agent event.
+- 642732a: Provider adapters are now looked up through a registration table instead of a hard-coded branch (`registerProvider` / `createProviderAdapter`), and `createProviderAdapter` accepts capability overrides. New opt-in `--probe` flag (and `probeCapabilities` setting / `POLYGLOT_PROBE` env): on startup, ping an openai-compatible endpoint once to detect its real context window and whether it actually honors structured output, caching the result in `~/.polyglot/capabilities.json`.
+
+### Patch Changes
+
+- 3428fec: Fail fast and honestly on a model that can't hold the tool-call format. When a model bails to prose after unrecovered parse errors, the turn now ends with the "isn't reliably producing valid tool calls — try a larger model" warning instead of silently reporting success. A step that only produces parse errors plus denied/errored calls now counts toward the give-up limit (previously any dispatched call, even a denied one, masked it). A `task` sub-agent whose model goes unreliable returns a one-line error instead of dumping its garbage transcript into the parent's context, and any sub-agent report is capped at 4000 chars. Unparseable tool-call bodies get a sharper hint (escape embedded quotes/newlines; don't wrap content in `<syntax>`/`<block>`/fences).
+
 ## 0.2.0
 
 ### Minor Changes
