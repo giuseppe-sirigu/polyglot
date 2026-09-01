@@ -732,7 +732,7 @@ export function App({
             pushItem({
               kind: "system",
               tone: "warn",
-              text: "This model isn't reliably producing valid tool calls; stopping.",
+              text: "This model isn't reliably producing valid tool calls; stopping. Try a larger model.",
             });
           }
           if (event.type === "agent_stop" && event.reason === "max_steps") {

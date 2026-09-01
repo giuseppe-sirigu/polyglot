@@ -49,9 +49,32 @@ function buildRegistry(): ToolRegistry {
   return registry;
 }
 
+/** Free-text (non-structured) counterpart of fakeStructuredAdapter - replays each response as
+ * one text_delta so the loop's <tool_call> stream-parser / repair path runs. */
+function fakeFreeTextAdapter(responses: string[]): ProviderAdapter {
+  let i = 0;
+  return {
+    id: "fake-free",
+    capabilities: { nativeToolCalling: "none", maxContextTokens: 100_000, structuredOutput: false },
+    async *chat(): AsyncIterable<ProviderStreamEvent> {
+      const text = responses[i++];
+      if (text === undefined) throw new Error("fakeFreeTextAdapter: ran out of scripted responses");
+      yield { type: "text_delta", delta: text };
+      yield { type: "message_stop", stopReason: "end_turn" };
+    },
+  };
+}
+
+const denyAllGate = {
+  async evaluate() {
+    return { decision: "deny" as const, reason: "denied in test" };
+  },
+};
+
 async function run(
   adapter: ProviderAdapter,
   tools: ToolRegistry,
+  gate: Parameters<typeof runAgentTurn>[0]["gate"] = new AllowAllGate(),
 ): Promise<{ events: AgentEvent[]; session: Session }> {
   const events: AgentEvent[] = [];
   const session = createSession({ cwd: "/tmp", provider: "fake", model: "fake" });
@@ -61,12 +84,16 @@ async function run(
     userInput: "go",
     systemPrompt: "system",
     tools,
-    gate: new AllowAllGate(),
+    gate,
     signal: new AbortController().signal,
     onEvent: (event) => events.push(event),
   });
   return { events, session };
 }
+
+const BROKEN_CALL = '<tool_call name="edit_file">\nthis is not json at all { [ } ]\n</tool_call>';
+const lastStop = (events: AgentEvent[]) =>
+  [...events].reverse().find((e) => e.type === "agent_stop");
 
 describe("runAgentTurn structured mode", () => {
   it("drives a real tool call from a valid envelope and appends its tool_result", async () => {
@@ -177,5 +204,54 @@ describe("runAgentTurn structured mode", () => {
     const assistantMessages = session.messages.filter((m) => m.role === "assistant");
     expect(assistantMessages[0]?.content).toBe(firstTurn);
     expect(assistantMessages[0]?.content).toContain("read_file");
+  });
+});
+
+describe("runAgentTurn give-up detection (free-text mode)", () => {
+  it("stops as unreliable_model - not done - when the model bails to prose after parse errors", async () => {
+    const adapter = fakeFreeTextAdapter([
+      BROKEN_CALL,
+      BROKEN_CALL,
+      "It seems that didn't work. Can you extract the code and paste it yourself?",
+    ]);
+
+    const { events } = await run(adapter, buildRegistry());
+
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "unreliable_model" });
+  });
+
+  it("still reports done when the model finishes cleanly after recovering from a parse error", async () => {
+    const adapter = fakeFreeTextAdapter([
+      BROKEN_CALL,
+      '<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_call>',
+      "Here is the summary of a.ts.",
+    ]);
+
+    const { events } = await run(adapter, buildRegistry());
+
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
+  });
+
+  it("gives up via the counter after maxConsecutiveParseFailures broken calls in a row", async () => {
+    const adapter = fakeFreeTextAdapter([BROKEN_CALL, BROKEN_CALL, BROKEN_CALL, BROKEN_CALL]);
+
+    const { events } = await run(adapter, buildRegistry());
+
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "unreliable_model" });
+  });
+
+  it("counts a step whose only real call was permission-denied as no progress", async () => {
+    const adapter = fakeFreeTextAdapter([
+      `${BROKEN_CALL}\n<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_call>`,
+      `${BROKEN_CALL}\n<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_call>`,
+      `${BROKEN_CALL}\n<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_call>`,
+      `${BROKEN_CALL}\n<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_call>`,
+    ]);
+
+    const { events } = await run(adapter, buildRegistry(), denyAllGate);
+
+    // read_file is denied every step, so no outcome "progressed" - the broken edit_file keeps
+    // the counter climbing instead of being masked by the dispatched-but-denied read_file.
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "unreliable_model" });
   });
 });
