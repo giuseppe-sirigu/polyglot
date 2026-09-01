@@ -133,6 +133,17 @@ describe("resolveEnvelope", () => {
     }
   });
 
+  it("adds escaping guidance when an xml-envelope body can't be parsed as JSON", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("read_file", "not json at all { [ } ]"), registry);
+    expect("message" in result).toBe(true);
+    if ("message" in result) {
+      expect(result.message).toMatch(/could not be parsed as JSON/);
+      expect(result.message).toMatch(/escape every " as \\"/);
+      expect(result.message).toMatch(/<syntax>, <block>/);
+    }
+  });
+
   it("resolves the fenced OpenAI-style {name, arguments} fallback shape", () => {
     const registry = buildRegistry();
     const body = JSON.stringify({ name: "read_file", arguments: { path: "a.ts" } });

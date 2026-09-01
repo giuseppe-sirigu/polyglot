@@ -191,7 +191,14 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     await pushMessage(session, "assistant", fullText, onMessage);
 
     if (resolutions.length === 0) {
-      onEvent({ type: "agent_stop", reason: "done" });
+      // No tool call this step. Normally that means the model is finished - but if it was
+      // mid-recovery from parse errors (consecutiveParseFailures > 0) and just bailed to prose
+      // ("can you extract the code and paste it yourself"), that's a give-up, not a completion.
+      // Report it honestly so the UI warns instead of looking like success.
+      onEvent({
+        type: "agent_stop",
+        reason: consecutiveParseFailures > 0 ? "unreliable_model" : "done",
+      });
       return;
     }
 
@@ -224,7 +231,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
               resolved.message,
               true,
             ),
-            succeeded: false,
+            progressed: false,
           });
         }
         return executeToolCall(resolved, tools, gate, {
@@ -250,16 +257,28 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
               executed.resultText,
               executed.isError,
             ),
-            succeeded: true,
+            // A denied call, a tool that threw, and a tool's own error result all count as
+            // "not progress" - a step that only produces those alongside parse errors is the
+            // model spinning, not working.
+            progressed: !executed.isError,
           };
         });
       }),
     );
 
     const resultBlocks = outcomes.map((o) => o.resultBlock);
-    const anySucceeded = outcomes.some((o) => o.succeeded);
+    const madeProgress = outcomes.some((o) => o.progressed);
+    const hadParseError = resolutions.some((r) => "message" in r);
 
-    consecutiveParseFailures = anySucceeded ? 0 : consecutiveParseFailures + 1;
+    // Give up on a model that keeps emitting unparseable tool calls without landing a single
+    // real one. Any genuine progress resets the count. Known gap: one always-succeeding call
+    // (e.g. a repeated read_file) alongside a broken one every step still resets it and the
+    // turn grinds to maxSteps - catching that needs goal-progress awareness we don't have.
+    if (madeProgress) {
+      consecutiveParseFailures = 0;
+    } else if (hadParseError) {
+      consecutiveParseFailures += 1;
+    }
     if (consecutiveParseFailures > maxConsecutiveParseFailures) {
       onEvent({ type: "agent_stop", reason: "unreliable_model" });
       return;

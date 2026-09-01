@@ -6,6 +6,13 @@ import { validateAgainstSchema } from "./validator.js";
 const NAME_ALIASES = ["name", "tool", "function", "tool_name"];
 const ARGS_ALIASES = ["arguments", "input", "parameters", "args"];
 
+/** Appended to "could not parse the body as JSON" errors - the failure is almost always a
+ * string value (usually file content) with a raw `"` or newline in it, or the whole thing
+ * wrapped in a non-JSON container. */
+const JSON_BODY_HINT =
+  ' The body must be one JSON object; inside string values escape every " as \\" and every ' +
+  "newline as \\n, and never wrap file content in <syntax>, <block>, or markdown fences.";
+
 export function resolveEnvelope(
   envelope: RawToolCallEnvelope,
   registry: ToolRegistry,
@@ -49,7 +56,7 @@ function resolveXmlEnvelope(
     return {
       raw: envelope.raw,
       attemptedName: declaredName,
-      message: `Arguments for "${declaredName}" could not be parsed as JSON: ${repaired.error}`,
+      message: `Arguments for "${declaredName}" could not be parsed as JSON: ${repaired.error}.${JSON_BODY_HINT}`,
     };
   }
 
@@ -67,7 +74,7 @@ function resolveFencedEnvelope(
       attemptedName: null,
       message: `Fenced tool call body could not be parsed as a JSON object: ${
         repaired.ok ? "not an object" : repaired.error
-      }`,
+      }.${JSON_BODY_HINT}`,
     };
   }
 

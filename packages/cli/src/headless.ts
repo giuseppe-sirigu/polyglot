@@ -221,6 +221,9 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
             if (event.reason === "unreliable_model") {
               stopReason = "unreliable_model";
               isError = true;
+              process.stderr.write(
+                "[polyglot] model isn't reliably producing valid tool calls; stopping. Try a larger model.\n",
+              );
             }
             break;
         }

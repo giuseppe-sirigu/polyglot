@@ -21,6 +21,11 @@ interface TaskInput {
   prompt: string;
 }
 
+/** Cap on how much of the sub-agent's report is fed back into the orchestrator's context - a
+ * runaway or repetitive sub-agent must not be able to blow up the parent's context (or, worse,
+ * prime the parent with its own broken output format). */
+const MAX_REPORT_CHARS = 4000;
+
 export function createTaskTool(config: TaskToolConfig): ToolDefinition<TaskInput> {
   return {
     name: "task",
@@ -70,8 +75,22 @@ export function createTaskTool(config: TaskToolConfig): ToolDefinition<TaskInput
         },
       });
 
+      // A sub-agent whose model went unreliable produced no usable result, only noise - don't
+      // hand that noise back to the orchestrator.
+      if (stopReason === "unreliable_model") {
+        return textResult(
+          "The sub-agent's model stopped producing valid output before it could report a " +
+            "result. Do this task yourself with read_file / edit_file instead of delegating.",
+        );
+      }
+
+      const report = finalText.trim();
+      const truncated =
+        report.length > MAX_REPORT_CHARS
+          ? `${report.slice(0, MAX_REPORT_CHARS)}\n\n[report truncated]`
+          : report;
       const note = stopReason === "done" ? "" : `\n\n[sub-agent stopped early: ${stopReason}]`;
-      return textResult((finalText.trim() || "(sub-agent produced no text output)") + note);
+      return textResult((truncated || "(sub-agent produced no text output)") + note);
     },
   };
 }
