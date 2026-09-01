@@ -12,11 +12,13 @@ import {
   type SessionSummary,
   type UserQuestionRequest,
   assembleSystemPrompt,
+  auditEventFromAgentEvent,
   bashTool,
   buildAgentTools,
   checkForUpdate,
   compactSession,
   createAskUserQuestionTool,
+  createAuditSink,
   createExitPlanModeTool,
   createProviderAdapter,
   createSession,
@@ -33,6 +35,7 @@ import {
   persistSessionHeader,
   persistSessionRename,
   persistSessionUsage,
+  pruneAuditLogs,
   prunePlans,
   pruneSessions,
   readFileTool,
@@ -322,6 +325,24 @@ export function App({
     [tools, session.cwd, mode, activeAdapter.capabilities.structuredOutput],
   );
 
+  // One audit sink per session (a fresh file on /reset or /resume). No-op when audit is off.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resolved.audit.* is process-stable; only session.id varies
+  const auditSink = useMemo(
+    () =>
+      createAuditSink({
+        enabled: resolved.audit.enabled,
+        sessionId: session.id,
+        path: resolved.audit.path,
+        hashArgs: resolved.audit.hashArgs,
+      }),
+    [session.id],
+  );
+  useEffect(() => {
+    return () => {
+      void auditSink.close();
+    };
+  }, [auditSink]);
+
   if (!startedRef.current) {
     startedRef.current = true;
     if (probeNote) {
@@ -400,11 +421,12 @@ export function App({
     const days = resolved.retentionDays;
     if (!resolved.persistTranscripts || !days) return;
     (async () => {
-      const [sessions, plans] = await Promise.all([
+      const [sessions, plans, audits] = await Promise.all([
         pruneSessions(days, session.id),
         prunePlans(days),
+        pruneAuditLogs(days, { path: resolved.audit.path, exceptId: session.id }),
       ]);
-      const total = sessions + plans;
+      const total = sessions + plans + audits;
       if (total > 0) {
         pushItem({
           kind: "system",
@@ -661,6 +683,13 @@ export function App({
           : undefined,
         onEvent: (event) => {
           if (isStale()) return;
+          const auditEvent = auditEventFromAgentEvent(event, {
+            sessionId: session.id,
+            model: session.model,
+            hashArgs: resolved.audit.hashArgs,
+            at: new Date().toISOString(),
+          });
+          if (auditEvent) auditSink.record(auditEvent);
           if (event.type === "text_delta") {
             streamingRef.current += event.delta;
             scheduleStreamFlush();

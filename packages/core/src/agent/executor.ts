@@ -7,6 +7,8 @@ export interface ExecutedToolCall {
   toolName: string;
   resultText: string;
   isError: boolean;
+  /** The permission-gate outcome for this call (an unregistered tool is reported as a deny). */
+  permission: { decision: "allow" | "deny"; reason?: string };
 }
 
 export interface ExecuteToolCallContext {
@@ -28,6 +30,7 @@ export async function executeToolCall(
       toolName: call.name,
       resultText: `Tool "${call.name}" is not registered.`,
       isError: true,
+      permission: { decision: "deny", reason: "unknown tool" },
     };
   }
 
@@ -45,12 +48,18 @@ export async function executeToolCall(
           }) ?? Promise.resolve(null)
       : undefined,
   });
+  const permission: ExecutedToolCall["permission"] = {
+    decision: decision.decision,
+    ...(decision.reason ? { reason: decision.reason } : {}),
+  };
+
   if (decision.decision === "deny") {
     return {
       toolCallId: call.id,
       toolName: tool.name,
       resultText: `Permission denied: ${decision.reason ?? "the user declined this action."}`,
       isError: true,
+      permission,
     };
   }
 
@@ -65,6 +74,7 @@ export async function executeToolCall(
       toolName: tool.name,
       resultText: result.toModelText(),
       isError: Boolean(result.isError),
+      permission,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -73,6 +83,7 @@ export async function executeToolCall(
       toolName: tool.name,
       resultText: `Tool execution threw an error: ${message}`,
       isError: true,
+      permission,
     };
   }
 }

@@ -233,6 +233,12 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
           signal,
         }).then((executed) => {
           onEvent({
+            type: "permission_decision",
+            toolName: executed.toolName,
+            decision: executed.permission.decision,
+            reason: executed.permission.reason,
+          });
+          onEvent({
             type: "tool_result",
             name: executed.toolName,
             resultText: executed.resultText,

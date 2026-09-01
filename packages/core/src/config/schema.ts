@@ -64,6 +64,19 @@ export const SettingsSchema = z.object({
    * on every future run. Lives only in the global settings file, never
    * merged from project-local settings (this is a per-machine choice). */
   autoUpdate: z.boolean().optional(),
+  /** Opt-in tamper-evident-ish record of every tool call / result / permission decision /
+   * usage / stop, one JSONL file per session under ~/.polyglot/audit. Sub-fields are left
+   * without schema defaults so layered configs can tell "unset" from "set" - the effective
+   * defaults (enabled: false, hashArgs: true) are applied in loader.ts. */
+  audit: z
+    .object({
+      enabled: z.boolean().optional(),
+      /** When false, raw tool-call arguments are recorded alongside their hash. */
+      hashArgs: z.boolean().optional(),
+      /** Override the audit directory (default ~/.polyglot/audit). */
+      path: z.string().optional(),
+    })
+    .optional(),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;

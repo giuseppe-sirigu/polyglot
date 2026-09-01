@@ -5,10 +5,12 @@ import {
   type ResolvedConfig,
   type Session,
   assembleSystemPrompt,
+  auditEventFromAgentEvent,
   bashTool,
   buildAgentTools,
   connectAllMcpServers,
   createAskUserQuestionTool,
+  createAuditSink,
   createExitPlanModeTool,
   createProviderAdapter,
   createSession,
@@ -21,6 +23,7 @@ import {
   persistMessage,
   persistSessionHeader,
   persistSessionUsage,
+  pruneAuditLogs,
   prunePlans,
   pruneSessions,
   readFileTool,
@@ -97,8 +100,19 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     await Promise.all([
       pruneSessions(resolved.retentionDays, session.id),
       prunePlans(resolved.retentionDays),
+      pruneAuditLogs(resolved.retentionDays, {
+        path: resolved.audit.path,
+        exceptId: session.id,
+      }),
     ]);
   }
+
+  const auditSink = createAuditSink({
+    enabled: resolved.audit.enabled,
+    sessionId: session.id,
+    path: resolved.audit.path,
+    hashArgs: resolved.audit.hashArgs,
+  });
 
   const mcpServerNames = Object.keys(resolved.mcpServers);
   let mcp: McpConnectResult | null = null;
@@ -174,6 +188,13 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
       signal: controller.signal,
       onMessage: persist ? (message) => persistMessage(session.id, message) : undefined,
       onEvent: (event) => {
+        const auditEvent = auditEventFromAgentEvent(event, {
+          sessionId: session.id,
+          model: session.model,
+          hashArgs: resolved.audit.hashArgs,
+          at: new Date().toISOString(),
+        });
+        if (auditEvent) auditSink.record(auditEvent);
         switch (event.type) {
           case "text_delta":
             assistantText += event.delta;
@@ -215,7 +236,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     }
   } finally {
     process.off("SIGINT", onSigint);
-    await mcp?.close();
+    await Promise.all([mcp?.close(), auditSink.close()]);
   }
 
   if (json) {
