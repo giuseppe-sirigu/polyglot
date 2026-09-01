@@ -5,6 +5,14 @@ export { executeToolCall } from "./agent/executor.js";
 export type { AgentEvent } from "./agent/events.js";
 export { PERSONA, assembleSystemPrompt } from "./agent/system-prompt.js";
 export {
+  createAuditSink,
+  auditEventFromAgentEvent,
+  hashToolInput,
+  auditDir,
+  pruneAuditLogs,
+} from "./audit/audit-log.js";
+export type { AuditEvent, AuditSink, AuditEventContext } from "./audit/audit-log.js";
+export {
   loadConfig,
   globalSettingsPath,
   projectSettingsPath,

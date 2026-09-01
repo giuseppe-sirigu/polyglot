@@ -100,6 +100,34 @@ describe("loadConfig probeCapabilities", () => {
   });
 });
 
+describe("loadConfig audit", () => {
+  const base = { provider: "openai-compatible", model: "m" };
+
+  it("defaults to disabled with args hashed", () => {
+    expect(loadWithSettings(base, null).audit).toEqual({
+      enabled: false,
+      hashArgs: true,
+      path: undefined,
+    });
+  });
+
+  it("resolves settings and layers project over global", () => {
+    const config = loadWithSettings(
+      { ...base, audit: { enabled: false, hashArgs: false } },
+      { audit: { enabled: true, path: "/logs" } },
+    );
+    expect(config.audit).toEqual({ enabled: true, hashArgs: false, path: "/logs" });
+  });
+
+  it("POLYGLOT_AUDIT toggles enabled", () => {
+    expect(loadWithSettings(base, null, { POLYGLOT_AUDIT: "1" }).audit.enabled).toBe(true);
+    expect(
+      loadWithSettings({ ...base, audit: { enabled: true } }, null, { POLYGLOT_AUDIT: "0" }).audit
+        .enabled,
+    ).toBe(false);
+  });
+});
+
 describe("loadConfig models", () => {
   it("defaults to an empty list when unset anywhere", () => {
     const config = loadWithSettings({ provider: "openai-compatible", model: "m" }, null);

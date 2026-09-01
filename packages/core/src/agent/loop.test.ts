@@ -121,6 +121,30 @@ describe("runAgentTurn structured mode", () => {
     expect(events.at(-1)).toEqual({ type: "agent_stop", reason: "done" });
   });
 
+  it("emits a permission_decision between the tool_call and its tool_result", async () => {
+    const adapter = fakeStructuredAdapter([
+      JSON.stringify({
+        message: "",
+        tool_calls: [{ name: "read_file", arguments: { path: "a.ts" } }],
+      }),
+      JSON.stringify({ message: "done", tool_calls: [] }),
+    ]);
+
+    const { events } = await run(adapter, buildRegistry());
+    const types = events.map((e) => e.type);
+    const call = types.indexOf("tool_call");
+    const decision = types.indexOf("permission_decision");
+    const result = types.indexOf("tool_result");
+    expect(call).toBeGreaterThanOrEqual(0);
+    expect(decision).toBeGreaterThan(call);
+    expect(result).toBeGreaterThan(decision);
+    expect(events[decision]).toMatchObject({
+      type: "permission_decision",
+      toolName: "read_file",
+      decision: "allow",
+    });
+  });
+
   it("passes the envelope response schema to the adapter whenever it reports structuredOutput", async () => {
     const requests: ChatRequest[] = [];
     const adapter = fakeStructuredAdapter(
