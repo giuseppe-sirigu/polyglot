@@ -26,6 +26,11 @@ export type AuditEvent =
       /** Raw arguments - only present when `hashArgs` is false (local debugging). */
       args?: unknown;
       correctedFromName?: string;
+      /** Set when the model's output needed repair to resolve into this call. */
+      repaired?: boolean;
+      /** The verbatim malformed block, recorded whenever `repaired` - regardless of
+       * `hashArgs` - so a parser fix can't silently hide a model regression. */
+      rawCall?: string;
     }
   | {
       kind: "tool_result";
@@ -126,6 +131,10 @@ export function auditEventFromAgentEvent(
         argsHash: hashToolInput(event.input),
         ...(ctx.hashArgs ? {} : { args: event.input }),
         ...(event.correctedFromName ? { correctedFromName: event.correctedFromName } : {}),
+        ...(event.repaired ? { repaired: true } : {}),
+        // recorded verbatim on every repair, even under hashArgs - the whole point is to
+        // keep the malformed original inspectable after the fact.
+        ...(event.rawCall ? { rawCall: event.rawCall } : {}),
       };
     case "tool_result":
       return {

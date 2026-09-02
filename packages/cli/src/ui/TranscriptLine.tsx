@@ -1,4 +1,5 @@
 import { Box, Text } from "ink";
+import { useShowRawRepairs } from "./RepairViewContext.js";
 import { renderMarkdown } from "./markdown.js";
 import { theme } from "./theme.js";
 import { describeToolCall, truncate } from "./toolDisplay.js";
@@ -7,6 +8,7 @@ import type { DisplayItem } from "./types.js";
 const TONE_COLOR = { info: theme.dim, warn: theme.warn, error: theme.error } as const;
 
 export function TranscriptLine({ item }: { item: DisplayItem }) {
+  const showRawRepairs = useShowRawRepairs();
   switch (item.kind) {
     case "user":
       return (
@@ -27,9 +29,18 @@ export function TranscriptLine({ item }: { item: DisplayItem }) {
         ? ` (corrected from "${item.correctedFromName}")`
         : "";
       return (
-        <Box marginTop={1}>
-          <Text color={theme.toolName}>⏺ {label}</Text>
-          {corrected ? <Text dimColor>{corrected}</Text> : null}
+        <Box flexDirection="column" marginTop={1}>
+          <Box>
+            <Text color={theme.toolName}>⏺ {label}</Text>
+            {corrected ? <Text dimColor>{corrected}</Text> : null}
+            {item.repaired ? <Text dimColor> ↺ repaired</Text> : null}
+          </Box>
+          {item.repaired && showRawRepairs && item.rawCall ? (
+            <Box paddingLeft={2} flexDirection="column">
+              <Text dimColor>raw model output:</Text>
+              <Text dimColor>{truncate(item.rawCall, 2000)}</Text>
+            </Box>
+          ) : null}
         </Box>
       );
     }

@@ -61,6 +61,7 @@ import { InputBar } from "./InputBar.js";
 import { LiveToolLog } from "./LiveToolLog.js";
 import { ModelSelectPrompt } from "./ModelSelectPrompt.js";
 import { PlanApprovalPrompt } from "./PlanApprovalPrompt.js";
+import { RepairViewContext } from "./RepairViewContext.js";
 import { ResumeSessionPrompt } from "./ResumeSessionPrompt.js";
 import { Spinner } from "./Spinner.js";
 import { StatusBar } from "./StatusBar.js";
@@ -69,6 +70,7 @@ import { TranscriptGroupView, groupKey } from "./TranscriptGroupView.js";
 import { TranscriptLine } from "./TranscriptLine.js";
 import { formatCostLine, formatCostReport } from "./costReport.js";
 import { renderMarkdown } from "./markdown.js";
+import { formatRepairReport } from "./repairReport.js";
 import { formatStatusReport } from "./statusReport.js";
 import { theme } from "./theme.js";
 import { type TranscriptGroup, groupTranscript } from "./toolPairing.js";
@@ -125,6 +127,8 @@ export function App({
   const updateConsentResolveRef = useRef<((enabled: boolean) => void) | null>(null);
   const [resumeRequest, setResumeRequest] = useState<SessionSummary[] | null>(null);
   const [modelRequest, setModelRequest] = useState<ModelOption[] | null>(null);
+  // Ctrl+R toggles the verbatim raw block under every repaired tool-call card.
+  const [showRawRepairs, setShowRawRepairs] = useState(false);
   // Messages submitted while a turn is already running queue here instead of being blocked -
   // InputBar stays typable throughout. Backed by a ref (not just the state) so the queue drain
   // in runTurn() always reads the current contents rather than whatever was captured in an
@@ -479,6 +483,13 @@ export function App({
       setMode(next);
       noteSwitch(`Switched to ${next} mode`);
     }
+
+    if (key.ctrl && input === "r" && noModal) {
+      setShowRawRepairs((on) => {
+        noteSwitch(`Raw view for repaired tool calls: ${on ? "off" : "on"}`);
+        return !on;
+      });
+    }
   });
 
   /** Shared by /reset and resuming a session: clears the visible transcript for a fresh one.
@@ -591,6 +602,16 @@ export function App({
         tone: "info",
         text: formatCostReport(session.usage, { anyPricing }),
       });
+      return;
+    }
+
+    if (value === "/raw") {
+      pushItem({ kind: "user", text: value });
+      const repairs = [...items, ...liveTurnItemsRef.current].filter(
+        (it): it is Extract<DisplayItem, { kind: "tool_call" }> =>
+          it.kind === "tool_call" && !!it.repaired,
+      );
+      pushItem({ kind: "system", tone: "info", text: formatRepairReport(repairs) });
       return;
     }
 
@@ -733,6 +754,7 @@ export function App({
               name: event.name,
               input: event.input,
               correctedFromName: event.correctedFromName,
+              ...(event.repaired ? { repaired: true, rawCall: event.rawCall } : {}),
             });
           }
           if (event.type === "tool_result") {
@@ -1015,100 +1037,102 @@ export function App({
     activeModel.provider === "anthropic" || Object.keys(resolved.pricing).length > 0;
 
   return (
-    <Box flexDirection="column" minHeight={fillHeight}>
-      <Static key={session.id} items={staticEntries}>
-        {(entry) =>
-          entry.kind === "header" ? (
-            <Header
-              key="__header__"
-              provider={activeModel.provider}
-              model={activeModel.model}
-              sessionId={session.id}
-              version={__VERSION__}
-              cwd={session.cwd}
-            />
-          ) : (
-            <TranscriptGroupView key={groupKey(entry)} group={entry} />
-          )
-        }
-      </Static>
+    <RepairViewContext.Provider value={showRawRepairs}>
+      <Box flexDirection="column" minHeight={fillHeight}>
+        <Static key={`${session.id}:${showRawRepairs ? "raw" : "clean"}`} items={staticEntries}>
+          {(entry) =>
+            entry.kind === "header" ? (
+              <Header
+                key="__header__"
+                provider={activeModel.provider}
+                model={activeModel.model}
+                sessionId={session.id}
+                version={__VERSION__}
+                cwd={session.cwd}
+              />
+            ) : (
+              <TranscriptGroupView key={groupKey(entry)} group={entry} />
+            )
+          }
+        </Static>
 
-      {switchNotice !== null ? (
-        <TranscriptLine
-          item={{ kind: "system", tone: "info", id: "__switch_notice__", text: switchNotice }}
-        />
-      ) : null}
+        {switchNotice !== null ? (
+          <TranscriptLine
+            item={{ kind: "system", tone: "info", id: "__switch_notice__", text: switchNotice }}
+          />
+        ) : null}
 
-      {streamingText ? <Box marginTop={1}>{renderMarkdown(streamingText)}</Box> : null}
+        {streamingText ? <Box marginTop={1}>{renderMarkdown(streamingText)}</Box> : null}
 
-      <LiveToolLog items={liveTurnItems} />
+        <LiveToolLog items={liveTurnItems} />
 
-      {/* The thinking indicator stays pinned below the live turn's output (streamed text and
+        {/* The thinking indicator stays pinned below the live turn's output (streamed text and
           tool calls) so freshly added lines never push it out of view. */}
-      {isRunning ? (
-        <Box marginTop={1}>
-          <Spinner />
-          <ThinkingLabel />
-        </Box>
-      ) : null}
+        {isRunning ? (
+          <Box marginTop={1}>
+            <Spinner />
+            <ThinkingLabel />
+          </Box>
+        ) : null}
 
-      {messageQueue.length > 0 ? (
-        <Box flexDirection="column" marginTop={1}>
-          {messageQueue.map((q) => (
-            <Text key={q.id} dimColor>
-              ⏸ {q.text.length > 100 ? `${q.text.slice(0, 100)}…` : q.text}
-            </Text>
-          ))}
-        </Box>
-      ) : null}
+        {messageQueue.length > 0 ? (
+          <Box flexDirection="column" marginTop={1}>
+            {messageQueue.map((q) => (
+              <Text key={q.id} dimColor>
+                ⏸ {q.text.length > 100 ? `${q.text.slice(0, 100)}…` : q.text}
+              </Text>
+            ))}
+          </Box>
+        ) : null}
 
-      {fillHeight !== undefined ? <Box flexGrow={1} /> : null}
+        {fillHeight !== undefined ? <Box flexGrow={1} /> : null}
 
-      {approvalRequest ? (
-        <ApprovalPrompt
-          request={approvalRequest}
-          onRespond={respondApproval}
-          onComment={respondApprovalComment}
-        />
-      ) : planRequest ? (
-        <PlanApprovalPrompt
-          plan={planRequest}
-          onRespond={respondPlan}
-          onComment={respondPlanComment}
-        />
-      ) : questionRequest ? (
-        <AskUserQuestionPrompt request={questionRequest} onRespond={respondQuestion} />
-      ) : showUpdateConsent ? (
-        <AutoUpdateConsentPrompt onRespond={respondUpdateConsent} />
-      ) : resumeRequest ? (
-        <ResumeSessionPrompt
-          sessions={resumeRequest}
-          onSelect={handleResumeSelect}
-          onCancel={handleResumeCancel}
-        />
-      ) : modelRequest ? (
-        <ModelSelectPrompt
-          options={modelRequest}
-          onSelect={handleModelSelect}
-          onCancel={handleModelCancel}
-        />
-      ) : (
-        <InputBar
-          value={inputValue}
-          onChange={setInputValue}
-          onSubmit={handleSubmit}
-          disabled={isRunning}
-          queuedCount={messageQueue.length}
-        />
-      )}
+        {approvalRequest ? (
+          <ApprovalPrompt
+            request={approvalRequest}
+            onRespond={respondApproval}
+            onComment={respondApprovalComment}
+          />
+        ) : planRequest ? (
+          <PlanApprovalPrompt
+            plan={planRequest}
+            onRespond={respondPlan}
+            onComment={respondPlanComment}
+          />
+        ) : questionRequest ? (
+          <AskUserQuestionPrompt request={questionRequest} onRespond={respondQuestion} />
+        ) : showUpdateConsent ? (
+          <AutoUpdateConsentPrompt onRespond={respondUpdateConsent} />
+        ) : resumeRequest ? (
+          <ResumeSessionPrompt
+            sessions={resumeRequest}
+            onSelect={handleResumeSelect}
+            onCancel={handleResumeCancel}
+          />
+        ) : modelRequest ? (
+          <ModelSelectPrompt
+            options={modelRequest}
+            onSelect={handleModelSelect}
+            onCancel={handleModelCancel}
+          />
+        ) : (
+          <InputBar
+            value={inputValue}
+            onChange={setInputValue}
+            onSubmit={handleSubmit}
+            disabled={isRunning}
+            queuedCount={messageQueue.length}
+          />
+        )}
 
-      <StatusBar
-        mode={mode}
-        model={activeModel.label}
-        contextUsedPercent={contextUsedPercent}
-        sessionCostUSD={session.usage?.costUSD}
-        sessionLabel={session.name}
-      />
-    </Box>
+        <StatusBar
+          mode={mode}
+          model={activeModel.label}
+          contextUsedPercent={contextUsedPercent}
+          sessionCostUSD={session.usage?.costUSD}
+          sessionLabel={session.name}
+        />
+      </Box>
+    </RepairViewContext.Provider>
   );
 }

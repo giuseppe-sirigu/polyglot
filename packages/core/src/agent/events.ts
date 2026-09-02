@@ -10,6 +10,10 @@ export type AgentEvent =
       name: string;
       input: unknown;
       correctedFromName?: string;
+      /** Set when the model's raw output needed repair to resolve (malformed JSON, a wrapper,
+       * args pulled out by name, a fuzzy tool name). `rawCall` is the verbatim block. */
+      repaired?: boolean;
+      rawCall?: string;
     }
   | { type: "tool_result"; toolCallId: string; name: string; resultText: string; isError: boolean }
   | {

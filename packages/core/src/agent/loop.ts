@@ -236,6 +236,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
           name: resolved.name,
           input: resolved.input,
           correctedFromName: resolved.correctedFromName,
+          ...(resolved.repaired ? { repaired: true, rawCall: resolved.raw } : {}),
         });
       }
     }

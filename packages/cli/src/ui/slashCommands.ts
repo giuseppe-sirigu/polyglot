@@ -12,6 +12,7 @@ export interface SlashCommand {
 export const SLASH_COMMANDS: SlashCommand[] = [
   { command: "/status", description: "Show model, data-handling & permission posture" },
   { command: "/cost", description: "Show token usage and estimated cost for this session" },
+  { command: "/raw", description: "Show the verbatim model output for each repaired tool call" },
   { command: "/model", description: "List or switch between configured models" },
   { command: "/rename", description: "Give this session a name", takesArgument: true },
   { command: "/resume", description: "Pick a previous session to resume" },

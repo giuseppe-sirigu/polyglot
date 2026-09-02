@@ -121,7 +121,7 @@ function resolveXmlEnvelope(
   if (tool && !hasAllRequired(tool.inputSchema, input)) {
     const bySchema = extractBySchema(envelope.body, tool.inputSchema);
     if (bySchema) {
-      return finalize(envelope, declaredName, bySchema, registry);
+      return finalize(envelope, declaredName, bySchema, registry, true);
     }
   }
 
@@ -133,7 +133,7 @@ function resolveXmlEnvelope(
     };
   }
 
-  return finalize(envelope, declaredName, input, registry);
+  return finalize(envelope, declaredName, input, registry, repaired.repaired);
 }
 
 function resolveFencedEnvelope(
@@ -164,7 +164,7 @@ function resolveFencedEnvelope(
     firstObjectField(repaired.value, ARGS_ALIASES) ??
     stripAliasKeys(repaired.value, [...NAME_ALIASES, ...ARGS_ALIASES]);
 
-  return finalize(envelope, name, args, registry);
+  return finalize(envelope, name, args, registry, repaired.repaired);
 }
 
 export function finalize(
@@ -172,6 +172,7 @@ export function finalize(
   requestedName: string,
   input: unknown,
   registry: ToolRegistry,
+  repaired = false,
 ): ParsedToolCall | ToolCallParseError {
   const { tool, correctedFrom } = resolveToolName(requestedName, registry);
   if (!tool) {
@@ -197,6 +198,7 @@ export function finalize(
     input,
     raw: source.raw,
     ...(correctedFrom ? { correctedFromName: correctedFrom } : {}),
+    ...(repaired || correctedFrom ? { repaired: true } : {}),
   };
 }
 

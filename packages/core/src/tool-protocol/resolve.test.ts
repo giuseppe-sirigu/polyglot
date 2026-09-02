@@ -61,6 +61,38 @@ describe("resolveEnvelope", () => {
     if (!("message" in result)) {
       expect(result.name).toBe("read_file");
       expect(result.input).toEqual({ path: "a.ts" });
+      expect(result.repaired).toBeFalsy();
+    }
+  });
+
+  it("flags a repair and keeps the raw block when the body needed jsonrepair", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("read_file", "{'path': 'a.ts',}"), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.repaired).toBe(true);
+      expect(result.raw).toContain("{'path': 'a.ts',}");
+    }
+  });
+
+  it("flags a repair for a fuzzy-corrected tool name", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("read_fil", '{"path": "a.ts"}'), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.name).toBe("read_file");
+      expect(result.repaired).toBe(true);
+    }
+  });
+
+  it("flags a repair when args were pulled out by parameter name", () => {
+    const registry = buildRegistry();
+    const body = '{"path":"a.mjs","old_string":"a\nb","new_string":"a\nb\nc"}';
+    const result = resolveEnvelope(xmlEnvelope("edit_file", body), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.repaired).toBe(true);
+      expect(result.raw).toContain('"old_string"');
     }
   });
 

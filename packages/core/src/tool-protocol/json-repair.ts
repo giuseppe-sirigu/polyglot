@@ -30,17 +30,24 @@ function stripEnclosingWrapper(text: string): string {
   return s.length > 0 ? s : original;
 }
 
-/** Tries increasingly aggressive strategies to coerce near-miss JSON text into a parsed object. */
-export function repairJson(
-  text: string,
-): { ok: true; value: unknown } | { ok: false; error: string } {
-  const trimmed = stripEnclosingWrapper(text);
+export type RepairResult =
+  | { ok: true; value: unknown; repaired: boolean }
+  | { ok: false; error: string };
+
+/** Tries increasingly aggressive strategies to coerce near-miss JSON text into a parsed object.
+ * `repaired` is false only for input that was already clean JSON (a bare `JSON.parse` of the
+ * verbatim body); any wrapper strip, jsonrepair pass, or looser fallback sets it true so the
+ * caller can flag the call as repaired and keep the raw form for the audit trail. */
+export function repairJson(text: string): RepairResult {
+  const stripped = stripEnclosingWrapper(text);
+  const trimmed = stripped;
+  const wrapperStripped = stripped !== text.trim();
   if (trimmed.length === 0) {
     return { ok: false, error: "empty body" };
   }
 
   try {
-    return { ok: true, value: JSON.parse(trimmed) };
+    return { ok: true, value: JSON.parse(trimmed), repaired: wrapperStripped };
   } catch {
     // fall through to repair
   }
@@ -56,14 +63,14 @@ export function repairJson(
       value.length > 0 &&
       value.every((v) => v && typeof v === "object" && !Array.isArray(v))
     ) {
-      return { ok: true, value: Object.assign({}, ...value) };
+      return { ok: true, value: Object.assign({}, ...value), repaired: true };
     }
     // jsonrepair's last resort for text with no JSON structure at all is to quote-wrap
     // it into a bare string - that's not a useful "repair" for a tool-call body, which
     // is always meant to be an object, so treat it the same as a failed repair and keep
     // trying the looser fallback below instead of accepting a wrapped string verbatim.
     if (!(typeof value === "string" && value === trimmed)) {
-      return { ok: true, value };
+      return { ok: true, value, repaired: true };
     }
   } catch {
     // fall through to regex fallback
@@ -71,12 +78,12 @@ export function repairJson(
 
   const fallback = extractLooseKeyValuePairs(trimmed);
   if (fallback) {
-    return { ok: true, value: fallback };
+    return { ok: true, value: fallback, repaired: true };
   }
 
   const blob = extractTrailingBlobField(trimmed);
   if (blob) {
-    return { ok: true, value: blob };
+    return { ok: true, value: blob, repaired: true };
   }
 
   return { ok: false, error: "could not parse body as JSON, even after repair" };
