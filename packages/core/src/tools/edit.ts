@@ -34,14 +34,14 @@ function countOccurrences(haystack: string, needle: string): number {
 function collapseDoubledEscapes(s: string): string {
   if (!s.includes("\\")) return s;
   return s
-    .replace(/\\\\/g, "\\")
     .replace(/\\r\\n/g, "\n")
     .replace(/\\n/g, "\n")
     .replace(/\\r/g, "\r")
     .replace(/\\t/g, "\t")
     .replace(/\\"/g, '"')
     .replace(/\\`/g, "`")
-    .replace(/\\\$/g, "$");
+    .replace(/\\\$/g, "$")
+    .replace(/\\\\/g, "\\");
 }
 
 function leadingWhitespace(line: string): string {
