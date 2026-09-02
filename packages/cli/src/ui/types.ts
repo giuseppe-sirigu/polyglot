@@ -11,6 +11,10 @@ export type DisplayItem =
       name: string;
       input: unknown;
       correctedFromName?: string;
+      /** The model's output needed repair to produce this call; `rawCall` is the verbatim
+       * malformed block, shown under the card when raw view is toggled on (Ctrl+R). */
+      repaired?: boolean;
+      rawCall?: string;
     }
   | {
       kind: "tool_result";

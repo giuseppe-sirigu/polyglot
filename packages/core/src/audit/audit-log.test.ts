@@ -76,6 +76,26 @@ describe("auditEventFromAgentEvent", () => {
     expect(event).toMatchObject({ args: { command: "ls" }, correctedFromName: "bahs" });
   });
 
+  it("records the verbatim raw call on a repair even under hashArgs", () => {
+    const event = auditEventFromAgentEvent(
+      {
+        type: "tool_call",
+        toolCallId: "tc3",
+        name: "edit_file",
+        input: { path: "a.ts", old_string: "x", new_string: "y" },
+        repaired: true,
+        rawCall: '<tool_call name="edit_file">\n{"path":"a.ts", ...malformed...}\n</tool_call>',
+      },
+      { ...ctx, hashArgs: true },
+    );
+    expect(event).toMatchObject({
+      repaired: true,
+      rawCall: expect.stringContaining("malformed"),
+    });
+    // still hashed, still no raw args - only the raw call block is kept
+    expect(event && "args" in event).toBe(false);
+  });
+
   it("records byte length and a hash for tool results", () => {
     const event = auditEventFromAgentEvent(
       {

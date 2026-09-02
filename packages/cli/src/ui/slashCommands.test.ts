@@ -20,6 +20,10 @@ describe("matchSlashCommands", () => {
     expect(matchSlashCommands("/co").map((c) => c.command)).toContain("/cost");
   });
 
+  it("matches /raw", () => {
+    expect(matchSlashCommands("/raw").map((c) => c.command)).toEqual(["/raw"]);
+  });
+
   it("is case-insensitive", () => {
     expect(matchSlashCommands("/MO").map((c) => c.command)).toEqual(["/model"]);
   });
