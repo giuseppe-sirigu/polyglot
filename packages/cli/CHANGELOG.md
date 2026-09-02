@@ -1,5 +1,11 @@
 # @usepolyglot/cli
 
+## 0.4.1
+
+### Patch Changes
+
+- 1147f00: The tool-call repair pass now strips a markdown code fence or an `<syntax>` / `<block>` / `<code>` tag wrapping the whole tool-call body before parsing it. Qwen and DeepSeek family models add these routinely even when told not to; previously it caused a parse error plus a corrective message a small model won't reliably follow mid-stream, so the same call failed repeatedly until the turn gave up. Stripping an enclosing wrapper is deterministic and lossless, so the call now parses on the first attempt instead of failing the whole turn.
+
 ## 0.4.0
 
 ### Minor Changes
