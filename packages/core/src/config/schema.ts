@@ -35,6 +35,18 @@ export const SettingsSchema = z.object({
    * native tool-calling (anthropic), off otherwise: a weak model that delegates to itself
    * mostly just burns turns. */
   subAgents: z.boolean().optional(),
+  /** Per-model price overrides for cost estimates (USD per 1M tokens), keyed by model id.
+   * Wins over the built-in Anthropic table for any provider - the way to put a nominal rate
+   * on a local model, or to correct a stale built-in. */
+  pricing: z
+    .record(
+      z.object({
+        input: z.number().nonnegative(),
+        output: z.number().nonnegative(),
+        cachedInput: z.number().nonnegative().optional(),
+      }),
+    )
+    .default({}),
   /** Selectable via the `/model` command at runtime - session-local only, never rewritten to
    * disk. See config/model-options.ts. */
   models: z.array(ModelEntrySchema).default([]),

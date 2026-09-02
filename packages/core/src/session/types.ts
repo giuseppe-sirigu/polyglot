@@ -1,3 +1,5 @@
+import type { SessionUsageTotals } from "./usage-accounting.js";
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -17,6 +19,9 @@ export interface Session {
    * the provider-measured input-token count from the last turn's usage. Undefined before the
    * first turn and immediately after compaction; callers fall back to estimateSessionTokens(). */
   lastContextTokens?: number;
+  /** Cumulative token + estimated-cost totals for the session, per model. Undefined until the
+   * first turn reports usage; restored by loadSession from the persisted turn_usage lines. */
+  usage?: SessionUsageTotals;
 }
 
 export function createSession(params: { cwd: string; provider: string; model: string }): Session {

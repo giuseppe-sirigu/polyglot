@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile, readdir, rm, stat } from "node:fs/promises
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Message, Session } from "./types.js";
+import { type TurnUsage, addTurnUsage, emptyUsageTotals } from "./usage-accounting.js";
 
 const DAY_MS = 86_400_000;
 
@@ -27,15 +28,29 @@ interface SessionRenameLine {
   renamedAt: number;
 }
 
-/** Appended after each turn that reported provider usage - loadSession() takes the last one as
- * the session's starting context size so `--resume` shows an accurate indicator right away. */
+/** Pre-A1 usage line: input tokens only. Still read by loadSession() for old transcripts, no
+ * longer written (superseded by SessionTurnUsageLine). */
 interface SessionUsageLine {
   kind: "usage";
   inputTokens: number;
   at: number;
 }
 
-type SessionLine = SessionHeader | SessionMessageLine | SessionRenameLine | SessionUsageLine;
+/** Appended after each turn that reported provider usage. loadSession() folds every one of
+ * these into `session.usage` (cumulative tokens + cost, per model) and takes the last one's
+ * `inputTokens` as the starting context size so `--resume` shows an accurate indicator right
+ * away. `costUSD` is stored so a later pricing-table change doesn't rewrite history. */
+interface SessionTurnUsageLine extends TurnUsage {
+  kind: "turn_usage";
+  at: number;
+}
+
+type SessionLine =
+  | SessionHeader
+  | SessionMessageLine
+  | SessionRenameLine
+  | SessionUsageLine
+  | SessionTurnUsageLine;
 
 export interface SessionSummary {
   id: string;
@@ -78,8 +93,8 @@ export async function persistSessionRename(sessionId: string, name: string): Pro
   await appendFile(sessionPath(sessionId), `${JSON.stringify(line)}\n`, "utf8");
 }
 
-export async function persistSessionUsage(sessionId: string, inputTokens: number): Promise<void> {
-  const line: SessionUsageLine = { kind: "usage", inputTokens, at: Date.now() };
+export async function persistTurnUsage(sessionId: string, turn: TurnUsage): Promise<void> {
+  const line: SessionTurnUsageLine = { kind: "turn_usage", ...turn, at: Date.now() };
   await appendFile(sessionPath(sessionId), `${JSON.stringify(line)}\n`, "utf8");
 }
 
@@ -103,8 +118,15 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
     .map((l) => l.message);
   const renames = lines.filter((l): l is SessionRenameLine => l.kind === "rename");
   const name = renames.at(-1)?.name;
-  const usages = lines.filter((l): l is SessionUsageLine => l.kind === "usage");
-  const lastContextTokens = usages.at(-1)?.inputTokens;
+
+  const turnUsages = lines.filter((l): l is SessionTurnUsageLine => l.kind === "turn_usage");
+  const usage =
+    turnUsages.length > 0
+      ? turnUsages.reduce((acc, l) => addTurnUsage(acc, l), emptyUsageTotals())
+      : undefined;
+  // Prefer a turn_usage line; fall back to a legacy `usage` line for pre-A1 transcripts.
+  const legacyUsages = lines.filter((l): l is SessionUsageLine => l.kind === "usage");
+  const lastContextTokens = turnUsages.at(-1)?.inputTokens ?? legacyUsages.at(-1)?.inputTokens;
 
   return {
     id: header.id,
@@ -114,6 +136,7 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
     messages,
     ...(name ? { name } : {}),
     ...(lastContextTokens !== undefined ? { lastContextTokens } : {}),
+    ...(usage ? { usage } : {}),
   };
 }
 
