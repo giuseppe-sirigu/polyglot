@@ -1,0 +1,4 @@
+# Force a textual diff for TypeScript sources even if a stray control byte sneaks
+# in (git otherwise flags the whole file "Binary files differ" and hides the diff).
+*.ts   diff
+*.tsx  diff
