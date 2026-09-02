@@ -45,8 +45,8 @@
     "@types/diff": "^6.0.0",
     "@types/react": "^19.2.18",
     "@usepolyglot/core": "workspace:*",
-    "esbuild": "^0.28.1",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
   }
 }
