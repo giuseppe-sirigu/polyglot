@@ -25,6 +25,68 @@ export function resolveEnvelope(
   return resolveFencedEnvelope(envelope, repaired, registry);
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function requiredKeys(schema: JsonSchema): string[] {
+  return Array.isArray(schema.required) ? (schema.required as string[]) : [];
+}
+
+function hasAllRequired(schema: JsonSchema, value: unknown): boolean {
+  const req = requiredKeys(schema);
+  return req.length > 0 && isPlainObject(value) && req.every((k) => k in value);
+}
+
+/**
+ * Recovers a tool call whose string arguments contain raw (unescaped) newlines and `"` - the
+ * way capable models routinely write file content into `edit_file` / `write_file`. Using the
+ * tool's own parameter names as anchors, it finds each `"<param>":` marker in the raw body in
+ * order and takes everything up to the next marker (or the body's end) as that value, peeling
+ * one layer of surrounding quotes/backticks. Structure-agnostic on purpose: tolerates raw
+ * newlines, unescaped quotes, a body split across several `{...}` objects, and trailing-brace
+ * typos. Returns null unless it recovers every required parameter.
+ */
+function extractBySchema(body: string, schema: JsonSchema): Record<string, unknown> | null {
+  const props = isPlainObject(schema.properties) ? schema.properties : undefined;
+  if (!props) return null;
+
+  const markers: { name: string; start: number; valueAt: number }[] = [];
+  for (const name of Object.keys(props)) {
+    const m = new RegExp(`"${escapeRegExp(name)}"\\s*:\\s*`).exec(body);
+    if (m) markers.push({ name, start: m.index, valueAt: m.index + m[0].length });
+  }
+  if (markers.length === 0) return null;
+  markers.sort((a, b) => a.start - b.start);
+
+  const out: Record<string, unknown> = {};
+  for (let i = 0; i < markers.length; i++) {
+    const cur = markers[i] as (typeof markers)[number];
+    const end =
+      i + 1 < markers.length ? (markers[i + 1] as (typeof markers)[number]).start : body.length;
+    let value = body.slice(cur.valueAt, end);
+
+    const quoted = /^\s*(["'`])/.exec(value);
+    if (quoted) {
+      value = value.slice(quoted[0].length);
+      // drop the closing quote and any `,` `}` `{` boundary noise before the next marker
+      value = value.replace(/(["'`])[\s,{}]*$/, "");
+    } else {
+      // bare (non-string) value: number / boolean / null
+      value = value.replace(/[\s,{}]*$/, "");
+      try {
+        out[cur.name] = JSON.parse(value);
+        continue;
+      } catch {
+        // fall through and store as a string
+      }
+    }
+    out[cur.name] = value;
+  }
+
+  return hasAllRequired(schema, out) ? out : null;
+}
+
 function resolveXmlEnvelope(
   envelope: RawToolCallEnvelope,
   repaired: ReturnType<typeof repairJson>,
@@ -50,6 +112,17 @@ function resolveXmlEnvelope(
       attemptedName: null,
       message: 'Tool call is missing a "name" attribute, e.g. <tool_call name="read_file">.',
     };
+  }
+
+  // If JSON repair didn't yield an object carrying every required parameter (raw newlines /
+  // unescaped quotes in a string value, a body split across several {...} objects), pull the
+  // arguments out by the tool's own parameter names instead.
+  const { tool } = resolveToolName(declaredName, registry);
+  if (tool && !hasAllRequired(tool.inputSchema, input)) {
+    const bySchema = extractBySchema(envelope.body, tool.inputSchema);
+    if (bySchema) {
+      return finalize(envelope, declaredName, bySchema, registry);
+    }
   }
 
   if (!repaired.ok) {
