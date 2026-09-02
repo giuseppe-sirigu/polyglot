@@ -13,7 +13,8 @@ import { jsonrepair } from "jsonrepair";
  * opening line removed.
  */
 function stripEnclosingWrapper(text: string): string {
-  let s = text.trim();
+  const original = text.trim();
+  let s = original;
   // Peel repeatedly: a fence nested inside a tag, or stacked tags, both show up in the wild.
   for (let i = 0; i < 4; i++) {
     const before = s;
@@ -25,7 +26,8 @@ function stripEnclosingWrapper(text: string): string {
       .trim();
     if (s === before) break;
   }
-  return s;
+  // A single-line wrapper (```json{...}``` with no newline) would otherwise be eaten whole.
+  return s.length > 0 ? s : original;
 }
 
 /** Tries increasingly aggressive strategies to coerce near-miss JSON text into a parsed object. */
@@ -62,7 +64,76 @@ export function repairJson(
     return { ok: true, value: fallback };
   }
 
+  const blob = extractTrailingBlobField(trimmed);
+  if (blob) {
+    return { ok: true, value: blob };
+  }
+
   return { ok: false, error: "could not parse body as JSON, even after repair" };
+}
+
+function strictObject(text: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // not strict JSON
+  }
+  return null;
+}
+
+/**
+ * Last resort for `{"path": "...", "content": "<a whole file, quotes and newlines
+ * unescaped>"}` - the dominant `write_file` failure from weaker models. Walks the `"key":`
+ * markers left to right, keeping the last one whose preceding text still closes into a valid
+ * object; everything after that key is taken as the raw value (JSON-parse and jsonrepair have
+ * already given up on it as a whole). A `"x":` *inside* the unescaped blob doesn't fool it,
+ * because by then the head no longer parses. Returns null unless a clean head and a
+ * string-shaped tail are found, so a genuinely different malformation still errors.
+ */
+function extractTrailingBlobField(text: string): Record<string, unknown> | null {
+  if (!text.startsWith("{") || !text.endsWith("}")) return null;
+  const inner = text.slice(1, -1);
+
+  const keyRe = /(?:^|,)\s*"([A-Za-z_]\w*)"\s*:\s*/g;
+  let scalars: Record<string, unknown> | null = null;
+  let blobKey = "";
+  let valueStart = -1;
+  for (let m = keyRe.exec(inner); m !== null; m = keyRe.exec(inner)) {
+    const headText = `{${inner.slice(0, m.index).replace(/,\s*$/, "")}}`;
+    const head = strictObject(headText);
+    if (!head) break;
+    scalars = head;
+    blobKey = m[1] as string;
+    valueStart = m.index + m[0].length;
+  }
+  if (!scalars || valueStart < 0) return null;
+
+  let raw = inner.slice(valueStart).replace(/,\s*$/, "").trim();
+  const quote = raw[0];
+  if (!(quote === '"' || quote === "'" || quote === "`") || raw.length < 2) return null;
+  raw = raw.slice(1);
+  if (raw.endsWith(quote)) raw = raw.slice(0, -1);
+
+  // If a real trailing scalar field is still sitting in `raw`, the blob wasn't last and we
+  // over-consumed - bail rather than write a file with `", "path": "..."` glued on the end.
+  if (/["'`]\s*,\s*"[A-Za-z_]\w*"\s*:\s*["'`]/.test(raw)) return null;
+
+  raw = stripEnclosingWrapper(raw);
+  // A model that flattened the string to one line with `\n` escapes but then broke the
+  // quoting: unescape what it clearly meant. A value with real newlines is already literal.
+  if (!raw.includes("\n") && /\\[nrt]/.test(raw)) {
+    raw = raw
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t");
+  }
+  raw = raw.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+
+  return { ...scalars, [blobKey]: raw };
 }
 
 /** Last-resort extraction for bodies that look like YAML/Python-dict rather than JSON,
