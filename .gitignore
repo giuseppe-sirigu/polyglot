@@ -17,3 +17,4 @@ packages/cli/README.md
 # Local output of `pnpm scenario:live` - failure transcripts and the per-run summary log.
 packages/core/src/testing/captured-failures/
 scenario-results.jsonl
+scenario-matrix.md
