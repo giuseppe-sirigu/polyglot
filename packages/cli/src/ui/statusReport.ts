@@ -17,6 +17,8 @@ export interface StatusReportFields {
   sessionId: string;
   messageCount: number;
   contextUsedPercent: number | undefined;
+  /** One-line cost summary (see costReport.formatCostLine). */
+  cost: string;
   cwd: string;
 }
 
@@ -68,6 +70,7 @@ export function formatStatusReport(f: StatusReportFields): string {
       f.autoUpdate === undefined ? "not set" : f.autoUpdate ? "on" : "notify only"
     } (checks npm on startup)`,
     `  mcp servers:  ${f.mcpServers.length > 0 ? f.mcpServers.join(", ") : "none"}`,
+    `  cost:         ${f.cost}`,
     `  cwd:          ${f.cwd}`,
     `  session:      ${f.sessionId} · ${f.messageCount} message(s)${
       f.contextUsedPercent === undefined ? "" : ` · context ~${f.contextUsedPercent}%`

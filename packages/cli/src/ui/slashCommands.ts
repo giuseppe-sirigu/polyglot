@@ -11,6 +11,7 @@ export interface SlashCommand {
 // here, so the popup has one canonical entry per action instead of near-duplicates.
 export const SLASH_COMMANDS: SlashCommand[] = [
   { command: "/status", description: "Show model, data-handling & permission posture" },
+  { command: "/cost", description: "Show token usage and estimated cost for this session" },
   { command: "/model", description: "List or switch between configured models" },
   { command: "/rename", description: "Give this session a name", takesArgument: true },
   { command: "/resume", description: "Pick a previous session to resume" },

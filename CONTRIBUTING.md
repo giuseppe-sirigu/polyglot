@@ -25,6 +25,7 @@ packages/
       permissions/     # manual/auto/plan permission gate
       session/         # session types, JSONL persistence, context compaction
       config/          # settings.json schema + global/project/env merge
+      testing/         # scenario harness (runScenario), invariants, scenario suite - test-only
   cli/     # @usepolyglot/cli - Ink-based terminal UI frontend
 branding/  # logo assets
 ```
@@ -60,6 +61,20 @@ change behavior don't need one.
 If you're touching `packages/core/src/tool-protocol/` (the streaming parser or the repair pipeline), please add a fixture test - that directory's test files are the thing keeping this project honest about actually working against messy real-model output, not just clean happy-path input. A captured real transcript from a model producing malformed or unusual tool calls is the most valuable kind of test case here.
 
 The most load-bearing tests are in `packages/core/src/tool-protocol/*.test.ts`: the streaming-parser tests assert identical results no matter how the model's output is chunked across packets, and the resolver tests cover jsonrepair fallbacks, fuzzy tool-name correction, and both tool-call grammars (the taught XML envelope and the tolerated OpenAI-style fenced-JSON fallback). Coverage elsewhere in `packages/core` is pure-logic (config merging, session persistence, the agent loop, provider request-shaping); `packages/cli`'s Ink components have no automated coverage today and are verified by hand.
+
+### Scenario harness and the live model matrix
+
+`packages/core/src/testing/` runs a whole user turn end-to-end against a real temp working directory with the real tools:
+
+- `runScenario()` / `runScenarioAgainst()` - drive `runAgentTurn` with either a *scripted* model (`string[]` of completions) or a real `ProviderAdapter`. Model-call and wall-clock budgets abort a runaway instead of letting a test hang.
+- `invariants.ts` - properties that should hold for **any** model on **any** task (`shellFailuresSurfaced`, `resultsPairedToCalls`, `honestCompletion`, `subAgentSpawnsBounded`, `noRunaway`). Each throws a descriptive error on violation.
+- `scenarios.ts` - the reusable scenario suite; each carries a declared invariant list, a `taskDone` check, and a scripted `goldenTurns` transcript of a competent model doing the task.
+- `scenario-models.ts` - the model list `pnpm scenario:live` runs against.
+- `scenario-matrix.test.ts` (runs in normal CI) - every scenario against its `goldenTurns`, asserting `taskDone` and every invariant. This is the regression gate; it needs no inference server.
+
+**`pnpm scenario:live`** runs the same scenario suite against real models from `packages/core/src/testing/scenario-models.ts` (local Ollama tags by default; override with `SCENARIO_MODELS`, `SCENARIO_BASE_URL`, or `SCENARIO_INCLUDE_ANTHROPIC=1`). It prints a `model x invariant` table per scenario, writes a JSON transcript for every invariant failure to `packages/core/src/testing/captured-failures/` (git-ignored, ready to promote into a scripted `tool-protocol` fixture), and appends one summary line to `scenario-results.jsonl`.
+
+This is a **discovery tool, not a gate** - a weak model failing `taskDone`, or even an invariant, on a hard task is expected. Watch the *diff from the last run*: a previously-passing (model, invariant) that now fails is a real regression. Run it when you touch the agent loop, the tool-call parser, or a built-in tool.
 
 ## Code style
 
@@ -102,16 +117,20 @@ From then on, every release goes through CI with no credentials on the runner.
 ### Cutting a release
 
 1. Merge the PRs you want in the release (each carrying its changeset).
-2. `pnpm changeset:version` - consumes the pending `.changeset/*.md`, bumps
+2. Run `pnpm scenario:live` against your local models and paste the `model x
+   invariant` table into the release PR. Nothing should have regressed from the
+   previous release's table (weak-model `taskDone` misses are fine; an invariant
+   that flipped from ✓ to ✗ is not).
+3. `pnpm changeset:version` - consumes the pending `.changeset/*.md`, bumps
    `packages/cli/package.json`, and updates `CHANGELOG.md`. Review the diff.
-3. Commit it (`chore: release vX.Y.Z`) and get it onto `main` via PR.
-4. Tag that commit and push the tag:
+4. Commit it (`chore: release vX.Y.Z`) and get it onto `main` via PR.
+5. Tag that commit and push the tag:
    ```bash
    git checkout main && git pull
    git tag v$(node -p "require('./packages/cli/package.json').version")
    git push origin --tags
    ```
-5. The `Release` workflow re-runs build/typecheck/lint/test, checks the tag matches
+6. The `Release` workflow re-runs build/typecheck/lint/test, checks the tag matches
    the package version, packs the tarball with pnpm (which resolves the `workspace:`
    devDependency), and publishes it with `npm publish --provenance` - authenticating
    via OIDC, with a signed provenance attestation. No secret on the runner.
