@@ -37,6 +37,22 @@ describe("repairJson - basics", () => {
     expect(ok(repairJson('```json{"path":"a"}```'))).toEqual({ path: "a" });
   });
 
+  it("merges a body split into several back-to-back objects into one", () => {
+    const body =
+      '{"path": "a.ts", "old_string": "const x = 1;\\nconst y = 2;"}\n' +
+      '{"new_string": "const x = 1;\\nconst y = 2;\\nconst z = 3;"}';
+    expect(ok(repairJson(body))).toEqual({
+      path: "a.ts",
+      old_string: "const x = 1;\nconst y = 2;",
+      new_string: "const x = 1;\nconst y = 2;\nconst z = 3;",
+    });
+  });
+
+  it("leaves a genuine JSON array alone", () => {
+    const r = repairJson('[{"a": 1}, {"b": 2}]');
+    expect(r.ok && r.value).toEqual([{ a: 1 }, { b: 2 }]);
+  });
+
   it("still errors on a body that is just prose", () => {
     expect(repairJson("here is what I would do").ok).toBe(false);
   });
