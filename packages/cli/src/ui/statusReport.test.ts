@@ -39,6 +39,7 @@ describe("formatStatusReport", () => {
     sessionId: "abc",
     messageCount: 4,
     contextUsedPercent: 12,
+    cost: "no usage yet",
     cwd: "/proj",
   };
 
@@ -66,5 +67,11 @@ describe("formatStatusReport", () => {
       webSearchBaseURL: "https://searx.example",
     });
     expect(searxng).toMatch(/searxng \(https:\/\/searx\.example\)/);
+  });
+
+  it("shows the cost line verbatim", () => {
+    expect(
+      formatStatusReport({ ...base, cost: "~$0.0123 estimated · 1,000 in / 200 out (see /cost)" }),
+    ).toMatch(/cost:\s+~\$0\.0123 estimated/);
   });
 });

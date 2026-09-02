@@ -40,6 +40,7 @@ export function TranscriptLine({ item }: { item: DisplayItem }) {
           <Text color={item.isError ? theme.error : theme.success}>
             {item.isError ? "✗ " : "⎿ "}
           </Text>
+          {item.name ? <Text dimColor>{item.name} </Text> : null}
           <Text dimColor={!item.isError}>{truncate(item.resultText, 300)}</Text>
         </Box>
       );

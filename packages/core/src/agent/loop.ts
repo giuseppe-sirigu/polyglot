@@ -28,10 +28,15 @@ export interface RunAgentTurnOptions {
   onMessage?: (message: Message) => void | Promise<void>;
   maxSteps?: number;
   maxConsecutiveParseFailures?: number;
+  /** Cap on `task` sub-agent spawns for this whole user turn (across all steps). Extra `task`
+   * calls return an error result instead of spawning - bounds cost when a model loops on
+   * delegation. */
+  maxSubAgentSpawns?: number;
 }
 
 const DEFAULT_MAX_STEPS = 25;
 const DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES = 2;
+const DEFAULT_MAX_SUBAGENT_SPAWNS = 3;
 
 async function pushMessage(
   session: Session,
@@ -77,11 +82,13 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     onMessage,
     maxSteps = DEFAULT_MAX_STEPS,
     maxConsecutiveParseFailures = DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES,
+    maxSubAgentSpawns = DEFAULT_MAX_SUBAGENT_SPAWNS,
   } = opts;
 
   await pushMessage(session, "user", userInput, onMessage);
 
   let consecutiveParseFailures = 0;
+  let subAgentSpawns = 0;
 
   for (let step = 0; step < maxSteps; step++) {
     onEvent({ type: "turn_start" });
@@ -161,6 +168,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
         onEvent({ type: "turn_end", stopReason });
         onEvent({
           type: "tool_parse_error",
+          toolCallId: crypto.randomUUID(),
           attemptedName: null,
           message: `This model's backend does not appear to be honoring structured-output constraints (response_format/json_schema): ${parsed.error}. If this keeps happening, disable "structuredOutput" in your config and fall back to free-text tool calling.`,
         });
@@ -202,19 +210,29 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
       return;
     }
 
+    // Each resolution gets a stable id up front so the tool_call event and its
+    // result/permission/parse-error events can be correlated by the consumer (a ParsedToolCall
+    // already has one from resolve.ts; a parse error needs a fresh one).
+    const withId = resolutions.map((resolved) => ({
+      resolved,
+      toolCallId: "message" in resolved ? crypto.randomUUID() : resolved.id,
+    }));
+
     // All calls in one turn were decided by the model before seeing any of their
     // results, so there's no ordering dependency between them - run them concurrently
     // (this is also what makes multiple "task" sub-agent calls in one turn parallel).
-    for (const resolved of resolutions) {
+    for (const { resolved, toolCallId } of withId) {
       if ("message" in resolved) {
         onEvent({
           type: "tool_parse_error",
+          toolCallId,
           attemptedName: resolved.attemptedName,
           message: resolved.message,
         });
       } else {
         onEvent({
           type: "tool_call",
+          toolCallId,
           name: resolved.name,
           input: resolved.input,
           correctedFromName: resolved.correctedFromName,
@@ -223,7 +241,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     }
 
     const outcomes = await Promise.all(
-      resolutions.map((resolved) => {
+      withId.map(({ resolved, toolCallId }) => {
         if ("message" in resolved) {
           return Promise.resolve({
             resultBlock: formatToolResultBlock(
@@ -234,6 +252,30 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
             progressed: false,
           });
         }
+        if (resolved.name === "task") {
+          if (subAgentSpawns >= maxSubAgentSpawns) {
+            const message = `Sub-agent budget for this turn is exhausted (${subAgentSpawns} spawned). Do the remaining work directly with read_file / edit_file / bash instead of delegating.`;
+            onEvent({
+              type: "permission_decision",
+              toolCallId,
+              toolName: "task",
+              decision: "deny",
+              reason: "sub-agent turn budget exhausted",
+            });
+            onEvent({
+              type: "tool_result",
+              toolCallId,
+              name: "task",
+              resultText: message,
+              isError: true,
+            });
+            return Promise.resolve({
+              resultBlock: formatToolResultBlock("task", message, true),
+              progressed: false,
+            });
+          }
+          subAgentSpawns += 1;
+        }
         return executeToolCall(resolved, tools, gate, {
           cwd: session.cwd,
           sessionId: session.id,
@@ -241,12 +283,14 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
         }).then((executed) => {
           onEvent({
             type: "permission_decision",
+            toolCallId,
             toolName: executed.toolName,
             decision: executed.permission.decision,
             reason: executed.permission.reason,
           });
           onEvent({
             type: "tool_result",
+            toolCallId,
             name: executed.toolName,
             resultText: executed.resultText,
             isError: executed.isError,

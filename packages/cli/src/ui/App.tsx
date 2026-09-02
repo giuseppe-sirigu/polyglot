@@ -11,6 +11,7 @@ import {
   type Session,
   type SessionSummary,
   type UserQuestionRequest,
+  addTurnUsage,
   assembleSystemPrompt,
   auditEventFromAgentEvent,
   bashTool,
@@ -24,6 +25,7 @@ import {
   createSession,
   createWebSearchTool,
   editFileTool,
+  emptyUsageTotals,
   findModelOption,
   getAutoUpdatePreference,
   globTool,
@@ -34,7 +36,7 @@ import {
   persistMessage,
   persistSessionHeader,
   persistSessionRename,
-  persistSessionUsage,
+  persistTurnUsage,
   pruneAuditLogs,
   prunePlans,
   pruneSessions,
@@ -45,6 +47,7 @@ import {
   sessionContextTokens,
   setAutoUpdatePreference,
   shouldCompact,
+  turnUsageFromEvent,
   webFetchTool,
   writeFileTool,
 } from "@usepolyglot/core";
@@ -62,14 +65,17 @@ import { ResumeSessionPrompt } from "./ResumeSessionPrompt.js";
 import { Spinner } from "./Spinner.js";
 import { StatusBar } from "./StatusBar.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
+import { TranscriptGroupView, groupKey } from "./TranscriptGroupView.js";
 import { TranscriptLine } from "./TranscriptLine.js";
+import { formatCostLine, formatCostReport } from "./costReport.js";
 import { renderMarkdown } from "./markdown.js";
 import { formatStatusReport } from "./statusReport.js";
 import { theme } from "./theme.js";
+import { type TranscriptGroup, groupTranscript } from "./toolPairing.js";
 import { reconstructTranscript } from "./transcript.js";
 import type { DisplayItem, DistributiveOmit, LiveTurnItem, NewDisplayItem } from "./types.js";
 
-type StaticEntry = { kind: "header" } | DisplayItem;
+type StaticEntry = { kind: "header" } | TranscriptGroup;
 
 interface ActiveModel {
   provider: "anthropic" | "openai-compatible";
@@ -243,7 +249,10 @@ export function App({
     }
   }
 
-  const staticEntries = useMemo<StaticEntry[]>(() => [{ kind: "header" }, ...items], [items]);
+  const staticEntries = useMemo<StaticEntry[]>(
+    () => [{ kind: "header" }, ...groupTranscript(items)],
+    [items],
+  );
 
   const gateRef = useRef<PolicyGate | null>(null);
   if (!gateRef.current) {
@@ -285,6 +294,9 @@ export function App({
       gate,
       model: activeModel.model,
       cwd: session.cwd,
+      // Unset config → on only for models with reliable native tool-calling; a weak model
+      // that keeps delegating to itself mostly burns turns.
+      subAgents: resolved.subAgents ?? activeAdapter.capabilities.nativeToolCalling === "reliable",
     });
     // Always registered - not gated on the mode the session *started* in - since the user can
     // switch into plan mode later via Shift+Tab, and the model must still be able to call these
@@ -312,7 +324,7 @@ export function App({
       ),
     );
     return built;
-  }, [activeAdapter, activeModel.model, session.cwd]);
+  }, [activeAdapter, activeModel.model, session.cwd, resolved.subAgents]);
 
   const systemPrompt = useMemo(
     () =>
@@ -565,8 +577,19 @@ export function App({
           sessionId: session.id,
           messageCount: session.messages.length,
           contextUsedPercent,
+          cost: formatCostLine(session.usage, anyPricing),
           cwd: session.cwd,
         }),
+      });
+      return;
+    }
+
+    if (value === "/cost") {
+      pushItem({ kind: "user", text: value });
+      pushItem({
+        kind: "system",
+        tone: "info",
+        text: formatCostReport(session.usage, { anyPricing }),
       });
       return;
     }
@@ -706,6 +729,7 @@ export function App({
           if (event.type === "tool_call") {
             pushLiveItem({
               kind: "tool_call",
+              toolCallId: event.toolCallId,
               name: event.name,
               input: event.input,
               correctedFromName: event.correctedFromName,
@@ -714,19 +738,31 @@ export function App({
           if (event.type === "tool_result") {
             pushLiveItem({
               kind: "tool_result",
+              toolCallId: event.toolCallId,
               name: event.name,
               resultText: event.resultText,
               isError: event.isError,
             });
           }
           if (event.type === "tool_parse_error") {
-            pushLiveItem({ kind: "tool_parse_error", message: event.message });
+            pushLiveItem({
+              kind: "tool_parse_error",
+              toolCallId: event.toolCallId,
+              message: event.message,
+            });
           }
-          if (event.type === "usage" && event.inputTokens > 0 && resolved.persistTranscripts) {
+          if (event.type === "usage" && event.inputTokens > 0) {
             // runAgentTurn already updated session.lastContextTokens in memory (drives the
-            // status-bar indicator on the next render); persist it so `--resume` starts with an
-            // accurate figure too.
-            void persistSessionUsage(session.id, event.inputTokens);
+            // status-bar indicator). Accumulate cost + token totals (mutated in place like
+            // session.messages - /status, /cost and the status bar read it fresh) and persist
+            // the turn so `--resume` restores an accurate figure.
+            const turn = turnUsageFromEvent(event, {
+              provider: session.provider as "anthropic" | "openai-compatible",
+              model: session.model,
+              overrides: resolved.pricing,
+            });
+            session.usage = addTurnUsage(session.usage ?? emptyUsageTotals(), turn);
+            if (resolved.persistTranscripts) void persistTurnUsage(session.id, turn);
           }
           if (event.type === "agent_stop" && event.reason === "unreliable_model") {
             pushItem({
@@ -973,6 +1009,11 @@ export function App({
       ? Math.min(100, Math.round((sessionContextTokens(session) / maxContextTokens) * 100))
       : undefined;
 
+  // Whether a cost estimate is meaningful at all: an anthropic model has built-in prices, and
+  // a `pricing` override can price any (e.g. local) model.
+  const anyPricing =
+    activeModel.provider === "anthropic" || Object.keys(resolved.pricing).length > 0;
+
   return (
     <Box flexDirection="column" minHeight={fillHeight}>
       <Static key={session.id} items={staticEntries}>
@@ -987,7 +1028,7 @@ export function App({
               cwd={session.cwd}
             />
           ) : (
-            <TranscriptLine key={entry.id} item={entry} />
+            <TranscriptGroupView key={groupKey(entry)} group={entry} />
           )
         }
       </Static>
@@ -1065,6 +1106,7 @@ export function App({
         mode={mode}
         model={activeModel.label}
         contextUsedPercent={contextUsedPercent}
+        sessionCostUSD={session.usage?.costUSD}
         sessionLabel={session.name}
       />
     </Box>

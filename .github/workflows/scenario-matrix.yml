@@ -1,0 +1,54 @@
+name: Scenario matrix (live)
+
+# Runs `pnpm scenario:live` - the scenario suite against real local models - and uploads the
+# result table + failure transcripts as an artifact. This needs a reachable inference server
+# (Ollama etc.) with the models pulled, so it only runs on a SELF-HOSTED runner labelled
+# `ollama` and only when triggered by hand.
+#
+# It is NOT a gate: weak models are expected to miss `taskDone` (and sometimes an invariant) on
+# hard tasks. The point is to compare against the previous run's table. The scripted
+# `scenario-matrix.test.ts` in normal CI is the actual regression gate.
+#
+# To enable: register a self-hosted runner with the `ollama` label on a box that has Ollama
+# running and the models from packages/core/src/testing/scenario-models.jsonc pulled. Until
+# then this workflow just fails fast with "no runner available", which is harmless.
+
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Comma-separated model ids to run (blank = the full scenario-models.jsonc list)"
+        required: false
+        default: ""
+      include_anthropic:
+        description: "Also run a Claude baseline (needs ANTHROPIC_API_KEY secret)"
+        type: boolean
+        default: false
+
+jobs:
+  matrix:
+    runs-on: [self-hosted, ollama]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Run scenario matrix
+        env:
+          SCENARIO_MODELS: ${{ github.event.inputs.models }}
+          SCENARIO_INCLUDE_ANTHROPIC: ${{ github.event.inputs.include_anthropic == 'true' && '1' || '' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: pnpm scenario:live | tee scenario-matrix.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scenario-matrix
+          path: |
+            scenario-matrix.txt
+            scenario-results.jsonl
+            packages/core/src/testing/captured-failures/
+          if-no-files-found: ignore

@@ -9,10 +9,19 @@ import {
   persistMessage,
   persistSessionHeader,
   persistSessionRename,
-  persistSessionUsage,
+  persistTurnUsage,
   pruneSessions,
 } from "./store.js";
 import { createSession } from "./types.js";
+import type { TurnUsage } from "./usage-accounting.js";
+
+const turn = (over: Partial<TurnUsage> = {}): TurnUsage => ({
+  model: "m",
+  inputTokens: 100,
+  outputTokens: 20,
+  costUSD: 0,
+  ...over,
+});
 
 // sessionsDir() resolves via node:os's homedir(), which reads the real process.env.HOME
 // directly - same as config/loader.ts's globalSettingsPath(). Without overriding it here,
@@ -75,20 +84,54 @@ describe("session rename", () => {
 });
 
 describe("session usage", () => {
-  it("has no lastContextTokens before any turn reports usage", async () => {
+  it("has no usage or lastContextTokens before any turn reports usage", async () => {
     const session = createSession({ cwd: "/tmp", provider: "openai-compatible", model: "m" });
     await persistSessionHeader(session);
     const loaded = await loadSession(session.id);
     expect(loaded?.lastContextTokens).toBeUndefined();
+    expect(loaded?.usage).toBeUndefined();
   });
 
-  it("loadSession restores the most recent usage count", async () => {
+  it("folds every turn_usage line into cumulative totals and per-model breakdown", async () => {
+    const session = createSession({ cwd: "/tmp", provider: "anthropic", model: "claude-opus-5" });
+    await persistSessionHeader(session);
+    await persistTurnUsage(
+      session.id,
+      turn({ model: "claude-opus-5", inputTokens: 800, outputTokens: 100, costUSD: 0.006_5 }),
+    );
+    await persistTurnUsage(
+      session.id,
+      turn({ model: "claude-opus-5", inputTokens: 900, outputTokens: 120, costUSD: 0.007_5 }),
+    );
+    await persistTurnUsage(
+      session.id,
+      turn({ model: "claude-haiku-4-5", inputTokens: 200, outputTokens: 40, costUSD: 0.000_4 }),
+    );
+
+    const loaded = await loadSession(session.id);
+    expect(loaded?.lastContextTokens).toBe(200);
+    expect(loaded?.usage?.inputTokens).toBe(1900);
+    expect(loaded?.usage?.outputTokens).toBe(260);
+    expect(loaded?.usage?.costUSD).toBeCloseTo(0.014_4, 6);
+    expect(loaded?.usage?.byModel["claude-opus-5"]).toMatchObject({
+      inputTokens: 1700,
+      outputTokens: 220,
+    });
+    expect(loaded?.usage?.byModel["claude-haiku-4-5"]?.inputTokens).toBe(200);
+  });
+
+  it("still reads lastContextTokens from a legacy `usage` line (pre-A1 transcript)", async () => {
     const session = createSession({ cwd: "/tmp", provider: "openai-compatible", model: "m" });
     await persistSessionHeader(session);
-    await persistSessionUsage(session.id, 845);
-    await persistSessionUsage(session.id, 872);
+    const { appendFile } = await import("node:fs/promises");
+    const path = join(homeDir, ".polyglot", "sessions", `${session.id}.jsonl`);
+    await appendFile(
+      path,
+      `${JSON.stringify({ kind: "usage", inputTokens: 872, at: Date.now() })}\n`,
+    );
     const loaded = await loadSession(session.id);
     expect(loaded?.lastContextTokens).toBe(872);
+    expect(loaded?.usage).toBeUndefined();
   });
 });
 

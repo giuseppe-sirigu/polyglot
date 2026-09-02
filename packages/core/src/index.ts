@@ -69,12 +69,29 @@ export {
   persistSessionHeader,
   persistMessage,
   persistSessionRename,
-  persistSessionUsage,
+  persistTurnUsage,
   pruneSessions,
   loadSession,
   listSessions,
 } from "./session/store.js";
 export type { SessionSummary } from "./session/store.js";
+export {
+  emptyUsageTotals,
+  addTurnUsage,
+  turnUsageFromEvent,
+} from "./session/usage-accounting.js";
+export type {
+  SessionUsageTotals,
+  ModelUsageTotals,
+  TurnUsage,
+} from "./session/usage-accounting.js";
+export {
+  PRICING_TABLE,
+  resolveModelPricing,
+  computeCost,
+  CACHE_READ_MULTIPLIER,
+} from "./pricing/pricing.js";
+export type { ModelPricing } from "./pricing/pricing.js";
 export { buildToolSystemPrompt } from "./tool-protocol/grammar.js";
 export { ToolCallStreamParser } from "./tool-protocol/stream-parser.js";
 export { finalize, resolveEnvelope } from "./tool-protocol/resolve.js";

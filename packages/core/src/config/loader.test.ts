@@ -100,6 +100,44 @@ describe("loadConfig probeCapabilities", () => {
   });
 });
 
+describe("loadConfig subAgents", () => {
+  const base = { provider: "openai-compatible", model: "m" };
+
+  it("is undefined unless set (frontend decides from model reliability)", () => {
+    expect(loadWithSettings(base, null).subAgents).toBeUndefined();
+  });
+
+  it("resolves from settings and POLYGLOT_SUB_AGENTS", () => {
+    expect(loadWithSettings({ ...base, subAgents: true }, null).subAgents).toBe(true);
+    expect(
+      loadWithSettings({ ...base, subAgents: true }, null, { POLYGLOT_SUB_AGENTS: "0" }).subAgents,
+    ).toBe(false);
+  });
+});
+
+describe("loadConfig pricing", () => {
+  const base = { provider: "openai-compatible", model: "m" };
+
+  it("defaults to an empty map", () => {
+    expect(loadWithSettings(base, null).pricing).toEqual({});
+  });
+
+  it("shallow-merges project overrides over global, per model id", () => {
+    const config = loadWithSettings(
+      {
+        ...base,
+        pricing: {
+          "qwen3-coder": { input: 0.1, output: 0.4 },
+          "local-70b": { input: 0.5, output: 2 },
+        },
+      },
+      { pricing: { "qwen3-coder": { input: 0.2, output: 0.8 } } },
+    );
+    expect(config.pricing["qwen3-coder"]).toEqual({ input: 0.2, output: 0.8 });
+    expect(config.pricing["local-70b"]).toEqual({ input: 0.5, output: 2 });
+  });
+});
+
 describe("loadConfig audit", () => {
   const base = { provider: "openai-compatible", model: "m" };
 

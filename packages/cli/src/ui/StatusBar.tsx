@@ -1,5 +1,6 @@
 import type { PermissionMode } from "@usepolyglot/core";
 import { Box, Text } from "ink";
+import { fmtUSD } from "./costReport.js";
 import { theme } from "./theme.js";
 
 const MODE_LABEL: Record<PermissionMode, string> = {
@@ -14,10 +15,18 @@ export interface StatusBarProps {
   /** 0-100 share of the model's context window (see sessionContextTokens) - undefined hides the
    * segment entirely rather than showing a misleading 0%. */
   contextUsedPercent: number | undefined;
+  /** Estimated cumulative session cost in USD - shown only when > 0. */
+  sessionCostUSD: number | undefined;
   sessionLabel: string | undefined;
 }
 
-export function StatusBar({ mode, model, contextUsedPercent, sessionLabel }: StatusBarProps) {
+export function StatusBar({
+  mode,
+  model,
+  contextUsedPercent,
+  sessionCostUSD,
+  sessionLabel,
+}: StatusBarProps) {
   const contextColor =
     contextUsedPercent === undefined
       ? undefined
@@ -38,6 +47,12 @@ export function StatusBar({ mode, model, contextUsedPercent, sessionLabel }: Sta
             · context: <Text color={contextColor}>{contextUsedPercent}%</Text>
           </>
         )}
+        {sessionCostUSD !== undefined && sessionCostUSD > 0 ? (
+          <>
+            {" "}
+            · <Text>{fmtUSD(sessionCostUSD)}</Text>
+          </>
+        ) : null}
         {sessionLabel === undefined ? null : (
           <>
             {" "}
