@@ -20,6 +20,12 @@ export const SCENARIO_MODELS: (ModelEntry & { label?: string })[] = [
   },
   {
     provider: "openai-compatible",
+    model: "qwen2.5-coder:7b",
+    baseURL: "http://localhost:11434/v1",
+    label: "Qwen 2.5 Coder 7B (common first pick)",
+  },
+  {
+    provider: "openai-compatible",
     model: "qwen2.5-coder:14b",
     baseURL: "http://localhost:11434/v1",
     label: "Qwen 2.5 Coder 14B",
