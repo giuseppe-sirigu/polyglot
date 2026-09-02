@@ -17,6 +17,7 @@
     "format": "biome format --write .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "scenario:live": "tsx scripts/scenario-matrix.ts",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "publish:manual": "pnpm build && d=$(mktemp -d) && pnpm --filter @usepolyglot/cli pack --pack-destination \"$d\" && npm publish \"$d\"/usepolyglot-cli-*.tgz --access public"
@@ -25,6 +26,7 @@
     "@biomejs/biome": "^1.9.4",
     "@changesets/cli": "^3.0.1",
     "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^3.2.6"
   },
