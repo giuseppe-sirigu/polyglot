@@ -144,6 +144,42 @@ describe("resolveEnvelope", () => {
     }
   });
 
+  it("strips a markdown code fence wrapping the whole xml-envelope body", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(
+      xmlEnvelope("read_file", '```json\n{"path": "a.ts"}\n```'),
+      registry,
+    );
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.input).toEqual({ path: "a.ts" });
+    }
+  });
+
+  it("strips a code fence even when the model dropped the closing ```", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(xmlEnvelope("read_file", '```json\n{"path": "a.ts"}'), registry);
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.input).toEqual({ path: "a.ts" });
+    }
+  });
+
+  it("strips <syntax> / <block> tag wrappers around the body", () => {
+    const registry = buildRegistry();
+    for (const body of [
+      '<syntax>{"path": "a.ts"}</syntax>',
+      '<block>\n{"path": "a.ts"}\n</block>',
+      '<syntax lang="json">```json\n{"path": "a.ts"}\n```</syntax>',
+    ]) {
+      const result = resolveEnvelope(xmlEnvelope("read_file", body), registry);
+      expect("message" in result).toBe(false);
+      if (!("message" in result)) {
+        expect(result.input).toEqual({ path: "a.ts" });
+      }
+    }
+  });
+
   it("resolves the fenced OpenAI-style {name, arguments} fallback shape", () => {
     const registry = buildRegistry();
     const body = JSON.stringify({ name: "read_file", arguments: { path: "a.ts" } });
