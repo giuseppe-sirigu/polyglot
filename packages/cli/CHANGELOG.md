@@ -1,5 +1,22 @@
 # @usepolyglot/cli
 
+## 0.4.0
+
+### Minor Changes
+
+- a8786c8: Cost and token accounting for a session:
+  
+  - **`/cost`** shows the running token total and estimated cost, broken down per model when a session has switched models.
+  - The **status bar** shows `· $0.0342` once a session has priced usage, and **`/status`** gains a `cost:` line.
+  - Anthropic models are priced from a built-in list-price table (with a `claude-<tier>-*` family fallback for point releases). Any other model, including local ones, is free unless you give it a price via the new **`pricing`** settings key (`{ "<model-id>": { "input": <USD/1M>, "output": <USD/1M>, "cachedInput"?: <USD/1M> } }`).
+  - Headless `-p --output-format json` output gains `cost_usd` and `tokens: { input, output }`.
+  - Per-turn usage is written to the session transcript, so `--resume` restores an accurate figure.
+- 7b4a771: Three fixes from dogfooding v0.3.0 on a weak local model:
+  
+  - **bash pipelines** now run with `pipefail`, so a failed early stage (`count | wc -l` where `count` doesn't exist) is reported as an error instead of the last stage's exit 0 masking it.
+  - **tool results** render directly under their own call, even when a step's calls ran concurrently and their results arrived interleaved (previously `edit_file`'s result could appear under `read_file`'s call). Result lines also show the tool name.
+  - **the `task` sub-agent** is off by default for models without reliable native tool-calling (openai-compatible), since a weak model that delegates to itself mostly burns turns; settable via `"subAgents": true/false` or `POLYGLOT_SUB_AGENTS`. A hard cap of 3 sub-agent spawns per user turn bounds cost for any model.
+
 ## 0.3.0
 
 ### Minor Changes
