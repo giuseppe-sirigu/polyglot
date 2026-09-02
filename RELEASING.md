@@ -45,10 +45,15 @@ only trigger.
 ## 4. Version bump
 
 - [ ] `pnpm changeset:version` - consumes `.changeset/*.md`, bumps
-      `packages/cli/package.json`, writes `CHANGELOG.md`.
-- [ ] `git diff` - version bump is what you expect (patch for fixes, minor for
-      features pre-1.0), the `CHANGELOG.md` entry reads cleanly, changeset files
-      are deleted.
+      `packages/cli/package.json`, writes `CHANGELOG.md`. It does **not** print the
+      new version.
+- [ ] Read the new version - **don't assume it**:
+      `node -p "require('./packages/cli/package.json').version"`
+      Pre-1.0, a `minor` changeset bumps the middle digit: `0.4.4` -> `0.5.0`, not
+      `0.4.5`. Use this number for the branch name, commit message, and tag below.
+- [ ] `git diff` - the bump matches what the changesets asked for (patch = fixes,
+      minor = anything user-facing pre-1.0), the `CHANGELOG.md` entry reads
+      cleanly, changeset files are deleted.
 - [ ] `pnpm install --frozen-lockfile` (a version change can touch the lockfile),
       then `pnpm build && pnpm typecheck && pnpm lint && pnpm test` - all green.
 - [ ] `git add packages/cli/package.json packages/cli/CHANGELOG.md .changeset/`
@@ -65,9 +70,13 @@ only trigger.
 ## 6. Tag and publish
 
 - [ ] `git checkout main && git pull`
-- [ ] `git log --oneline -1` shows `chore: release vX.Y.Z`.
-- [ ] `node -p "require('./packages/cli/package.json').version"` equals `X.Y.Z`.
-- [ ] `git tag vX.Y.Z && git push origin vX.Y.Z`
+- [ ] `git log --oneline -1` shows the release commit.
+- [ ] Tag straight from `package.json` so the tag can't disagree with the version
+      (the Release workflow hard-fails on a mismatch):
+      ```bash
+      V="v$(node -p "require('./packages/cli/package.json').version")"
+      git tag "$V" && git push origin "$V"
+      ```
 - [ ] Actions -> **Release** workflow (tag-triggered) pauses on the `release`
       environment -> **approve it**.
 - [ ] Workflow goes green: it re-runs the check suite, verifies tag == package
@@ -87,9 +96,16 @@ only trigger.
 - **Tagged before merge, or tagged the wrong commit** (and the workflow has not
   published yet): `git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z`, fix,
   re-tag.
-- **Tag doesn't match the package version:** the workflow fails its "Verify the tag
-  matches" step by design. Delete the tag, run `pnpm changeset:version` properly,
-  re-tag.
+- **Tag doesn't match the package version** (usually: tagged `vX.Y.(Z+1)` but a
+  `minor` changeset made it `vX.(Y+1).0`): the workflow fails its "Verify the tag
+  matches" step by design - nothing was published. `package.json` and `CHANGELOG.md`
+  are already correct; just move the tag:
+  ```bash
+  git checkout main && git pull
+  git tag -d vWRONG && git push origin :refs/tags/vWRONG
+  V="v$(node -p "require('./packages/cli/package.json').version")"
+  git tag "$V" && git push origin "$V"
+  ```
 - **A broken version got published:** you can't unpublish after 72h or once anything
   depends on it. `npm deprecate "@usepolyglot/cli@X.Y.Z" "broken - use X.Y.(Z+1)"`
   and ship a patch.
