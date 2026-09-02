@@ -15,7 +15,7 @@
  * Failure transcripts -> packages/core/src/testing/captured-failures/ (git-ignored).
  * One summary line per run -> scenario-results.jsonl (git-ignored).
  */
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -24,18 +24,16 @@ import {
   createProviderAdapter,
   resolveEngineConfigForModel,
 } from "../packages/core/src/index.js";
+import { SCENARIO_MODELS } from "../packages/core/src/testing/scenario-models.js";
 import { runScenarioAgainst } from "../packages/core/src/testing/scenario-runner.js";
 import { SCENARIOS } from "../packages/core/src/testing/scenarios.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const TESTING_DIR = join(REPO_ROOT, "packages/core/src/testing");
-const CAPTURE_DIR = join(TESTING_DIR, "captured-failures");
+const CAPTURE_DIR = join(REPO_ROOT, "packages/core/src/testing/captured-failures");
 const RESULTS_LOG = join(REPO_ROOT, "scenario-results.jsonl");
 
-function loadModels(): ModelEntry[] {
-  const raw = readFileSync(join(TESTING_DIR, "scenario-models.jsonc"), "utf8");
-  const stripped = raw.replace(/^\s*\/\/.*$/gm, "");
-  let models = JSON.parse(stripped) as ModelEntry[];
+function selectModels(): (ModelEntry & { label?: string })[] {
+  let models: (ModelEntry & { label?: string })[] = [...SCENARIO_MODELS];
 
   const only = process.env.SCENARIO_MODELS?.split(",")
     .map((s) => s.trim())
@@ -91,9 +89,9 @@ async function probeReachable(config: EngineConfig): Promise<Reachability> {
 }
 
 async function main() {
-  const models = loadModels();
+  const models = selectModels();
   if (models.length === 0) {
-    console.error("No models to run (check scenario-models.jsonc / SCENARIO_MODELS).");
+    console.error("No models to run (check scenario-models.ts / SCENARIO_MODELS).");
     process.exit(1);
   }
   mkdirSync(CAPTURE_DIR, { recursive: true });
