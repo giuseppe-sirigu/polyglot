@@ -43,7 +43,12 @@ describe("auditEventFromAgentEvent", () => {
 
   it("hashes tool-call args by default and stamps the envelope", () => {
     const event = auditEventFromAgentEvent(
-      { type: "tool_call", name: "edit_file", input: { path: "a.ts", old_string: "secret" } },
+      {
+        type: "tool_call",
+        toolCallId: "tc1",
+        name: "edit_file",
+        input: { path: "a.ts", old_string: "secret" },
+      },
       ctx,
     );
     expect(event).toMatchObject({
@@ -59,7 +64,13 @@ describe("auditEventFromAgentEvent", () => {
 
   it("keeps raw args when hashArgs is false", () => {
     const event = auditEventFromAgentEvent(
-      { type: "tool_call", name: "bash", input: { command: "ls" }, correctedFromName: "bahs" },
+      {
+        type: "tool_call",
+        toolCallId: "tc2",
+        name: "bash",
+        input: { command: "ls" },
+        correctedFromName: "bahs",
+      },
       { ...ctx, hashArgs: false },
     );
     expect(event).toMatchObject({ args: { command: "ls" }, correctedFromName: "bahs" });
@@ -67,7 +78,13 @@ describe("auditEventFromAgentEvent", () => {
 
   it("records byte length and a hash for tool results", () => {
     const event = auditEventFromAgentEvent(
-      { type: "tool_result", name: "read_file", resultText: "hello", isError: false },
+      {
+        type: "tool_result",
+        toolCallId: "tc3",
+        name: "read_file",
+        resultText: "hello",
+        isError: false,
+      },
       ctx,
     );
     expect(event).toMatchObject({
@@ -81,7 +98,13 @@ describe("auditEventFromAgentEvent", () => {
   it("maps permission decisions, usage, stops and parse errors", () => {
     expect(
       auditEventFromAgentEvent(
-        { type: "permission_decision", toolName: "bash", decision: "deny", reason: "blocked" },
+        {
+          type: "permission_decision",
+          toolCallId: "tc4",
+          toolName: "bash",
+          decision: "deny",
+          reason: "blocked",
+        },
         ctx,
       ),
     ).toMatchObject({ kind: "permission_decision", decision: "deny", reason: "blocked" });
@@ -93,7 +116,7 @@ describe("auditEventFromAgentEvent", () => {
     ).toMatchObject({ kind: "agent_stop", reason: "unreliable_model" });
     expect(
       auditEventFromAgentEvent(
-        { type: "tool_parse_error", attemptedName: null, message: "bad json" },
+        { type: "tool_parse_error", toolCallId: "tc5", attemptedName: null, message: "bad json" },
         ctx,
       ),
     ).toMatchObject({ kind: "tool_parse_error", attemptedName: null, message: "bad json" });

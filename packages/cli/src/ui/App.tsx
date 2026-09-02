@@ -62,14 +62,16 @@ import { ResumeSessionPrompt } from "./ResumeSessionPrompt.js";
 import { Spinner } from "./Spinner.js";
 import { StatusBar } from "./StatusBar.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
+import { TranscriptGroupView, groupKey } from "./TranscriptGroupView.js";
 import { TranscriptLine } from "./TranscriptLine.js";
 import { renderMarkdown } from "./markdown.js";
 import { formatStatusReport } from "./statusReport.js";
 import { theme } from "./theme.js";
+import { type TranscriptGroup, groupTranscript } from "./toolPairing.js";
 import { reconstructTranscript } from "./transcript.js";
 import type { DisplayItem, DistributiveOmit, LiveTurnItem, NewDisplayItem } from "./types.js";
 
-type StaticEntry = { kind: "header" } | DisplayItem;
+type StaticEntry = { kind: "header" } | TranscriptGroup;
 
 interface ActiveModel {
   provider: "anthropic" | "openai-compatible";
@@ -243,7 +245,10 @@ export function App({
     }
   }
 
-  const staticEntries = useMemo<StaticEntry[]>(() => [{ kind: "header" }, ...items], [items]);
+  const staticEntries = useMemo<StaticEntry[]>(
+    () => [{ kind: "header" }, ...groupTranscript(items)],
+    [items],
+  );
 
   const gateRef = useRef<PolicyGate | null>(null);
   if (!gateRef.current) {
@@ -285,6 +290,9 @@ export function App({
       gate,
       model: activeModel.model,
       cwd: session.cwd,
+      // Unset config → on only for models with reliable native tool-calling; a weak model
+      // that keeps delegating to itself mostly burns turns.
+      subAgents: resolved.subAgents ?? activeAdapter.capabilities.nativeToolCalling === "reliable",
     });
     // Always registered - not gated on the mode the session *started* in - since the user can
     // switch into plan mode later via Shift+Tab, and the model must still be able to call these
@@ -312,7 +320,7 @@ export function App({
       ),
     );
     return built;
-  }, [activeAdapter, activeModel.model, session.cwd]);
+  }, [activeAdapter, activeModel.model, session.cwd, resolved.subAgents]);
 
   const systemPrompt = useMemo(
     () =>
@@ -706,6 +714,7 @@ export function App({
           if (event.type === "tool_call") {
             pushLiveItem({
               kind: "tool_call",
+              toolCallId: event.toolCallId,
               name: event.name,
               input: event.input,
               correctedFromName: event.correctedFromName,
@@ -714,13 +723,18 @@ export function App({
           if (event.type === "tool_result") {
             pushLiveItem({
               kind: "tool_result",
+              toolCallId: event.toolCallId,
               name: event.name,
               resultText: event.resultText,
               isError: event.isError,
             });
           }
           if (event.type === "tool_parse_error") {
-            pushLiveItem({ kind: "tool_parse_error", message: event.message });
+            pushLiveItem({
+              kind: "tool_parse_error",
+              toolCallId: event.toolCallId,
+              message: event.message,
+            });
           }
           if (event.type === "usage" && event.inputTokens > 0 && resolved.persistTranscripts) {
             // runAgentTurn already updated session.lastContextTokens in memory (drives the
@@ -987,7 +1001,7 @@ export function App({
               cwd={session.cwd}
             />
           ) : (
-            <TranscriptLine key={entry.id} item={entry} />
+            <TranscriptGroupView key={groupKey(entry)} group={entry} />
           )
         }
       </Static>

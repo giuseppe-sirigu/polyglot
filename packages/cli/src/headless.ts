@@ -152,6 +152,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     gate,
     model: session.model,
     cwd: session.cwd,
+    subAgents: resolved.subAgents ?? adapter.capabilities.nativeToolCalling === "reliable",
   });
   tools.register(
     createAskUserQuestionTool(async () => {

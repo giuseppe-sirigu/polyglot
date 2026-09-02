@@ -102,20 +102,37 @@ function parseAssistantMessage(content: string, tools: ToolRegistry): NewDisplay
  * assistant completion's full raw text, tool_call tags and all; a "user"-role message that's
  * really a <tool_result> wrapper fed back to the model), so this reruns the same tag parsing
  * the live turn uses to turn that back into the tool_call/tool_result/assistant items the UI
- * shows for a turn in progress. */
+ * shows for a turn in progress. Each assistant message's tool calls are paired positionally
+ * with the following user message's result blocks via a synthetic toolCallId, so a resumed
+ * multi-call step still renders each result under its own call. */
 export function reconstructTranscript(messages: Message[], tools: ToolRegistry): NewDisplayItem[] {
   const items: NewDisplayItem[] = [];
+  let pendingCallIds: string[] = [];
   for (const message of messages) {
     if (message.role === "user") {
       const resultBlocks = parseToolResultBlocks(message.content);
       if (resultBlocks.length > 0) {
+        resultBlocks.forEach((block, i) => {
+          if (block.kind === "tool_result") block.toolCallId = pendingCallIds[i];
+        });
         items.push(...resultBlocks);
       } else {
         items.push({ kind: "user", text: message.content });
       }
+      pendingCallIds = [];
       continue;
     }
-    items.push(...parseAssistantMessage(message.content, tools));
+    const assistantItems = parseAssistantMessage(message.content, tools);
+    pendingCallIds = [];
+    for (const item of assistantItems) {
+      if (item.kind === "tool_call") {
+        item.toolCallId = crypto.randomUUID();
+        pendingCallIds.push(item.toolCallId);
+      } else if (item.kind === "tool_parse_error") {
+        item.toolCallId = crypto.randomUUID();
+      }
+    }
+    items.push(...assistantItems);
   }
   return items;
 }

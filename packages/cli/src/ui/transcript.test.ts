@@ -49,6 +49,7 @@ describe("reconstructTranscript", () => {
         name: "read_file",
         input: { path: "a.txt" },
         correctedFromName: undefined,
+        toolCallId: expect.any(String),
       },
     ]);
   });
@@ -85,6 +86,7 @@ describe("reconstructTranscript", () => {
         name: "read_file",
         input: { path: "a.txt" },
         correctedFromName: undefined,
+        toolCallId: expect.any(String),
       },
     ]);
   });
@@ -112,6 +114,7 @@ describe("reconstructTranscript", () => {
         name: "read_file",
         input: { path: "a.txt" },
         correctedFromName: undefined,
+        toolCallId: expect.any(String),
       },
     ]);
   });

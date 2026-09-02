@@ -100,6 +100,21 @@ describe("loadConfig probeCapabilities", () => {
   });
 });
 
+describe("loadConfig subAgents", () => {
+  const base = { provider: "openai-compatible", model: "m" };
+
+  it("is undefined unless set (frontend decides from model reliability)", () => {
+    expect(loadWithSettings(base, null).subAgents).toBeUndefined();
+  });
+
+  it("resolves from settings and POLYGLOT_SUB_AGENTS", () => {
+    expect(loadWithSettings({ ...base, subAgents: true }, null).subAgents).toBe(true);
+    expect(
+      loadWithSettings({ ...base, subAgents: true }, null, { POLYGLOT_SUB_AGENTS: "0" }).subAgents,
+    ).toBe(false);
+  });
+});
+
 describe("loadConfig audit", () => {
   const base = { provider: "openai-compatible", model: "m" };
 
