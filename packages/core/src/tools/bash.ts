@@ -1,14 +1,10 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { type ToolDefinition, textResult } from "./types.js";
 
 const MAX_OUTPUT_CHARS = 20_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 const IS_WINDOWS = process.platform === "win32";
-/** PowerShell (not cmd.exe) on Windows - it supports many POSIX-like aliases
- * (ls, cat, cp, rm, pwd, ...) so commands a model writes out of habit are far
- * more likely to still work than they would under cmd.exe. */
-const SHELL = IS_WINDOWS ? "powershell.exe" : "/bin/bash";
 
 interface BashInput {
   command: string;
@@ -37,25 +33,28 @@ export const bashTool: ToolDefinition<BashInput> = {
   },
   async execute(input, ctx) {
     return new Promise((resolve) => {
-      const child = exec(
-        input.command,
-        {
-          cwd: ctx.cwd,
-          signal: ctx.signal,
-          timeout: DEFAULT_TIMEOUT_MS,
-          maxBuffer: 10 * 1024 * 1024,
-          shell: SHELL,
-        },
-        (error, stdout, stderr) => {
-          if (error) {
-            const combined = [stdout, stderr].filter(Boolean).join("\n") || error.message;
-            resolve(textResult(truncate(combined), false));
-          } else {
-            const combined = [stdout, stderr].filter(Boolean).join("\n");
-            resolve(textResult(truncate(combined || "(no output)")));
-          }
-        },
-      );
+      const opts = {
+        cwd: ctx.cwd,
+        signal: ctx.signal,
+        timeout: DEFAULT_TIMEOUT_MS,
+        maxBuffer: 10 * 1024 * 1024,
+      } as const;
+      const onDone = (error: Error | null, stdout: string | Buffer, stderr: string | Buffer) => {
+        const out = [stdout, stderr].map(String).filter(Boolean).join("\n");
+        if (error) {
+          resolve(textResult(truncate(out || error.message), false));
+        } else {
+          resolve(textResult(truncate(out || "(no output)")));
+        }
+      };
+      // On POSIX, run through bash with `pipefail` so a failed stage in a pipeline
+      // (`missing-cmd | wc -l`) makes the whole command non-zero and is reported as an error,
+      // instead of the last stage's exit 0 masking it. Cost: `grep x f | head` now "fails"
+      // when grep matches nothing or head closes the pipe early (SIGPIPE). PowerShell on
+      // Windows supports POSIX-like aliases (ls/cat/rm/…) so habit commands still work.
+      const child = IS_WINDOWS
+        ? exec(input.command, { ...opts, shell: "powershell.exe" }, onDone)
+        : execFile("/bin/bash", ["-o", "pipefail", "-c", input.command], opts, onDone);
       // Commands run here are never interactive - close stdin immediately so a script that
       // blocks on input (e.g. a model-generated `read -p ...`) gets EOF right away instead of
       // hanging forever on a pipe nobody will ever write to.
