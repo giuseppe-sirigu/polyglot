@@ -28,7 +28,7 @@
     "@anthropic-ai/sdk": "^0.32.1",
     "@modelcontextprotocol/sdk": "^1.11.0",
     "ajv": "^8.17.1",
-    "glob": "^11.0.0",
+    "glob": "^13.0.6",
     "jsonrepair": "^3.11.2",
     "minimatch": "^10.0.1",
     "openai": "^7.8.0",
