@@ -4,6 +4,7 @@ import {
   PolicyGate,
   type ResolvedConfig,
   type Session,
+  addTurnUsage,
   assembleSystemPrompt,
   auditEventFromAgentEvent,
   bashTool,
@@ -16,18 +17,20 @@ import {
   createSession,
   createWebSearchTool,
   editFileTool,
+  emptyUsageTotals,
   globTool,
   grepTool,
   listSessions,
   loadSession,
   persistMessage,
   persistSessionHeader,
-  persistSessionUsage,
+  persistTurnUsage,
   pruneAuditLogs,
   prunePlans,
   pruneSessions,
   readFileTool,
   runAgentTurn,
+  turnUsageFromEvent,
   webFetchTool,
   writeFileTool,
 } from "@usepolyglot/core";
@@ -177,6 +180,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   let assistantText = "";
   let stopReason: "done" | "max_steps" | "unreliable_model" = "done";
   let isError = false;
+  let sessionUsage = session.usage ?? emptyUsageTotals();
 
   try {
     await runAgentTurn({
@@ -213,8 +217,14 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
             process.stderr.write(`  ⎿ tool parse error: ${event.message}\n`);
             break;
           case "usage":
-            if (event.inputTokens > 0 && persist) {
-              void persistSessionUsage(session.id, event.inputTokens);
+            if (event.inputTokens > 0) {
+              const turn = turnUsageFromEvent(event, {
+                provider: session.provider as "anthropic" | "openai-compatible",
+                model: session.model,
+                overrides: resolved.pricing,
+              });
+              sessionUsage = addTurnUsage(sessionUsage, turn);
+              if (persist) void persistTurnUsage(session.id, turn);
             }
             break;
           case "agent_stop":
@@ -251,6 +261,8 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
         is_error: isError,
         stop_reason: stopReason,
         persisted: persist,
+        cost_usd: sessionUsage.costUSD,
+        tokens: { input: sessionUsage.inputTokens, output: sessionUsage.outputTokens },
       })}\n`,
     );
   } else {

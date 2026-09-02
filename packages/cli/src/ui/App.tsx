@@ -11,6 +11,7 @@ import {
   type Session,
   type SessionSummary,
   type UserQuestionRequest,
+  addTurnUsage,
   assembleSystemPrompt,
   auditEventFromAgentEvent,
   bashTool,
@@ -24,6 +25,7 @@ import {
   createSession,
   createWebSearchTool,
   editFileTool,
+  emptyUsageTotals,
   findModelOption,
   getAutoUpdatePreference,
   globTool,
@@ -34,7 +36,7 @@ import {
   persistMessage,
   persistSessionHeader,
   persistSessionRename,
-  persistSessionUsage,
+  persistTurnUsage,
   pruneAuditLogs,
   prunePlans,
   pruneSessions,
@@ -45,6 +47,7 @@ import {
   sessionContextTokens,
   setAutoUpdatePreference,
   shouldCompact,
+  turnUsageFromEvent,
   webFetchTool,
   writeFileTool,
 } from "@usepolyglot/core";
@@ -64,6 +67,7 @@ import { StatusBar } from "./StatusBar.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { TranscriptGroupView, groupKey } from "./TranscriptGroupView.js";
 import { TranscriptLine } from "./TranscriptLine.js";
+import { formatCostLine, formatCostReport } from "./costReport.js";
 import { renderMarkdown } from "./markdown.js";
 import { formatStatusReport } from "./statusReport.js";
 import { theme } from "./theme.js";
@@ -573,8 +577,19 @@ export function App({
           sessionId: session.id,
           messageCount: session.messages.length,
           contextUsedPercent,
+          cost: formatCostLine(session.usage, anyPricing),
           cwd: session.cwd,
         }),
+      });
+      return;
+    }
+
+    if (value === "/cost") {
+      pushItem({ kind: "user", text: value });
+      pushItem({
+        kind: "system",
+        tone: "info",
+        text: formatCostReport(session.usage, { anyPricing }),
       });
       return;
     }
@@ -736,11 +751,18 @@ export function App({
               message: event.message,
             });
           }
-          if (event.type === "usage" && event.inputTokens > 0 && resolved.persistTranscripts) {
+          if (event.type === "usage" && event.inputTokens > 0) {
             // runAgentTurn already updated session.lastContextTokens in memory (drives the
-            // status-bar indicator on the next render); persist it so `--resume` starts with an
-            // accurate figure too.
-            void persistSessionUsage(session.id, event.inputTokens);
+            // status-bar indicator). Accumulate cost + token totals (mutated in place like
+            // session.messages - /status, /cost and the status bar read it fresh) and persist
+            // the turn so `--resume` restores an accurate figure.
+            const turn = turnUsageFromEvent(event, {
+              provider: session.provider as "anthropic" | "openai-compatible",
+              model: session.model,
+              overrides: resolved.pricing,
+            });
+            session.usage = addTurnUsage(session.usage ?? emptyUsageTotals(), turn);
+            if (resolved.persistTranscripts) void persistTurnUsage(session.id, turn);
           }
           if (event.type === "agent_stop" && event.reason === "unreliable_model") {
             pushItem({
@@ -987,6 +1009,11 @@ export function App({
       ? Math.min(100, Math.round((sessionContextTokens(session) / maxContextTokens) * 100))
       : undefined;
 
+  // Whether a cost estimate is meaningful at all: an anthropic model has built-in prices, and
+  // a `pricing` override can price any (e.g. local) model.
+  const anyPricing =
+    activeModel.provider === "anthropic" || Object.keys(resolved.pricing).length > 0;
+
   return (
     <Box flexDirection="column" minHeight={fillHeight}>
       <Static key={session.id} items={staticEntries}>
@@ -1079,6 +1106,7 @@ export function App({
         mode={mode}
         model={activeModel.label}
         contextUsedPercent={contextUsedPercent}
+        sessionCostUSD={session.usage?.costUSD}
         sessionLabel={session.name}
       />
     </Box>
