@@ -72,7 +72,7 @@ The most load-bearing tests are in `packages/core/src/tool-protocol/*.test.ts`: 
 - `scenario-models.ts` - the model list `pnpm scenario:live` runs against.
 - `scenario-matrix.test.ts` (runs in normal CI) - every scenario against its `goldenTurns`, asserting `taskDone` and every invariant. This is the regression gate; it needs no inference server.
 
-**`pnpm scenario:live`** runs the same scenario suite against real models from `packages/core/src/testing/scenario-models.ts` (local Ollama tags by default; override with `SCENARIO_MODELS`, `SCENARIO_BASE_URL`, or `SCENARIO_INCLUDE_ANTHROPIC=1`). It prints a `model x invariant` table per scenario, writes a JSON transcript for every invariant failure to `packages/core/src/testing/captured-failures/` (git-ignored, ready to promote into a scripted `tool-protocol` fixture), and appends one summary line to `scenario-results.jsonl`.
+**`pnpm scenario:live`** runs the same scenario suite against real models from `packages/core/src/testing/scenario-models.ts` (local Ollama tags by default; override with `SCENARIO_MODELS`, `SCENARIO_BASE_URL`, or `SCENARIO_INCLUDE_ANTHROPIC=1`). It prints a `model x invariant` table per scenario, then a ready-to-paste markdown summary (also written to `scenario-matrix.md`) with a diff against the previous run - "no invariant regressed" or a flagged list of `✓ -> ✗` flips. It writes a JSON transcript for every invariant failure to `packages/core/src/testing/captured-failures/` (git-ignored, ready to promote into a scripted `tool-protocol` fixture), and appends one summary line to `scenario-results.jsonl`.
 
 This is a **discovery tool, not a gate** - a weak model failing `taskDone`, or even an invariant, on a hard task is expected. Watch the *diff from the last run*: a previously-passing (model, invariant) that now fails is a real regression. Run it when you touch the agent loop, the tool-call parser, or a built-in tool.
 
@@ -119,10 +119,10 @@ From then on, every release goes through CI with no credentials on the runner.
 [`RELEASING.md`](RELEASING.md) is the print-and-tick checklist. The short version:
 
 1. Merge the PRs you want in the release (each carrying its changeset).
-2. Run `pnpm scenario:live` against your local models and paste the `model x
-   invariant` table into the release PR. Nothing should have regressed from the
-   previous release's table (weak-model `taskDone` misses are fine; an invariant
-   that flipped from ✓ to ✗ is not).
+2. Run `pnpm scenario:live` against your local models. Paste its markdown summary
+   into the release PR. If its verdict line flags a regression (an invariant that
+   flipped ✓ → ✗ vs the previous run), stop and investigate; weak-model `taskDone`
+   misses are fine.
 3. `pnpm changeset:version` - consumes the pending `.changeset/*.md`, bumps
    `packages/cli/package.json`, and updates `CHANGELOG.md`. Review the diff.
 4. Commit it (`chore: release vX.Y.Z`) and get it onto `main` via PR.

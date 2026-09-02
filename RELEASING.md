@@ -35,12 +35,12 @@ only trigger.
 
 - [ ] Ollama running, with the models in
       `packages/core/src/testing/scenario-models.ts` pulled (`ollama list`).
-- [ ] `pnpm scenario:live`
-- [ ] Diff against the previous release PR's table:
-      - weak-model `taskDone` misses -> fine, expected.
-      - any invariant that flipped **✓ -> ✗** -> **stop**, that's a regression; fix it
-        before releasing.
-- [ ] Copy the table - it goes in the PR description.
+- [ ] `pnpm scenario:live` - at the end it prints (and writes to `scenario-matrix.md`)
+      a ready-to-paste markdown table plus a diff against the previous run.
+- [ ] Read the verdict line:
+      - "**No invariant regressed**" -> good, paste the table into the release PR.
+      - "**⚠️ N invariant(s) regressed**" -> **stop**, investigate before releasing
+        (weak-model `taskDone` misses are fine; a `✓ -> ✗` invariant flip is not).
 
 ## 4. Version bump
 

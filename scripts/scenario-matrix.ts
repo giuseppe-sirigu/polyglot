@@ -15,7 +15,7 @@
  * Failure transcripts -> packages/core/src/testing/captured-failures/ (git-ignored).
  * One summary line per run -> scenario-results.jsonl (git-ignored).
  */
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -31,6 +31,7 @@ import { SCENARIOS } from "../packages/core/src/testing/scenarios.js";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CAPTURE_DIR = join(REPO_ROOT, "packages/core/src/testing/captured-failures");
 const RESULTS_LOG = join(REPO_ROOT, "scenario-results.jsonl");
+const MARKDOWN_OUT = join(REPO_ROOT, "scenario-matrix.md");
 
 function selectModels(): (ModelEntry & { label?: string })[] {
   let models: (ModelEntry & { label?: string })[] = [...SCENARIO_MODELS];
@@ -88,6 +89,117 @@ async function probeReachable(config: EngineConfig): Promise<Reachability> {
   }
 }
 
+type CellResult = { taskDone: boolean; failed: string[]; skipped?: boolean };
+type RunSummary = Record<string, Record<string, CellResult>>;
+type PriorRun = { at: string; models: string[]; summary: RunSummary };
+
+function readPreviousRun(): PriorRun | null {
+  try {
+    const lines = readFileSync(RESULTS_LOG, "utf8").trim().split("\n").filter(Boolean);
+    const last = lines.at(-1);
+    return last ? (JSON.parse(last) as PriorRun) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Regressions (a pair that passed before and fails now) and recoveries (the reverse),
+ * comparing this run to the previous one recorded in scenario-results.jsonl. */
+function diffRuns(
+  cur: RunSummary,
+  prev: PriorRun | null,
+): {
+  regressions: string[];
+  recoveries: string[];
+} {
+  const regressions: string[] = [];
+  const recoveries: string[] = [];
+  if (!prev) return { regressions, recoveries };
+  for (const [scen, perModel] of Object.entries(cur)) {
+    for (const [model, cell] of Object.entries(perModel)) {
+      const before = prev.summary[scen]?.[model];
+      if (!before || before.skipped || cell.skipped) continue;
+      const wasFailed = new Set(before.failed);
+      const nowFailed = new Set(cell.failed);
+      for (const inv of nowFailed) {
+        if (!wasFailed.has(inv)) regressions.push(`\`${inv}\` on ${scen} (${model})`);
+      }
+      for (const inv of wasFailed) {
+        if (!nowFailed.has(inv)) recoveries.push(`\`${inv}\` on ${scen} (${model})`);
+      }
+    }
+  }
+  return { regressions, recoveries };
+}
+
+function renderMarkdown(opts: {
+  runStamp: string;
+  models: (ModelEntry & { label?: string })[];
+  skippedReason: Map<string, string>;
+  summary: RunSummary;
+  prev: PriorRun | null;
+  done: number;
+  attempted: number;
+  captured: number;
+}): string {
+  const { runStamp, models, skippedReason, summary, prev, done, attempted, captured } = opts;
+  const ran = models.filter((m) => !skippedReason.has(m.model));
+  const date = runStamp.slice(0, 10);
+
+  const lines: string[] = [`## Scenario matrix (\`pnpm scenario:live\` · ${date})`, ""];
+  const ranNote = ran.map((m) => m.model).join(" · ");
+  const skips = [...skippedReason.entries()].map(([id, why]) => `${id}: ${why}`);
+  lines.push(ranNote + (skips.length > 0 ? `  (${skips.join(", ")})` : ""), "");
+
+  const modelCols = ran.map((m) => m.model);
+  lines.push(`| Scenario | Invariants | taskDone (${modelCols.join(" · ")}) |`);
+  lines.push("|---|---|---|");
+
+  for (const scenario of SCENARIOS) {
+    const perModel = summary[scenario.name] ?? {};
+    const failuresByInv = new Map<string, string[]>();
+    for (const inv of scenario.invariants.map((i) => i.name)) {
+      const failed = ran
+        .filter((m) => (perModel[m.model]?.failed ?? []).includes(inv))
+        .map((m) => m.model);
+      if (failed.length > 0) failuresByInv.set(inv, failed);
+    }
+    const invCell =
+      failuresByInv.size === 0
+        ? "all ✓"
+        : [...failuresByInv.entries()]
+            .map(([inv, ms]) => `\`${inv}\` ✗ ${ms.length === ran.length ? "all" : ms.join(", ")}`)
+            .join(" · ");
+    const doneCell = ran
+      .map((m) => {
+        const c = perModel[m.model];
+        return c?.skipped ? "—" : c?.taskDone ? "✓" : "✗";
+      })
+      .join(" · ");
+    lines.push(`| ${scenario.name} | ${invCell} | ${doneCell} |`);
+  }
+
+  lines.push("", `taskDone ${done}/${attempted} · ${captured} failure transcript(s).`, "");
+
+  const { regressions, recoveries } = diffRuns(summary, prev);
+  if (!prev) {
+    lines.push("_First recorded run - no previous matrix to compare against._");
+  } else if (regressions.length === 0) {
+    lines.push(`**No invariant regressed vs the previous run (${prev.at.slice(0, 10)}).**`);
+    if (recoveries.length > 0) {
+      lines.push("", `Recovered: ${recoveries.join("; ")}.`);
+    }
+  } else {
+    lines.push(
+      `**⚠️ ${regressions.length} invariant(s) regressed vs ${prev.at.slice(0, 10)}** - investigate before releasing:`,
+      "",
+      ...regressions.map((r) => `- ${r}`),
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
 async function main() {
   const models = selectModels();
   if (models.length === 0) {
@@ -97,10 +209,9 @@ async function main() {
   mkdirSync(CAPTURE_DIR, { recursive: true });
 
   const runStamp = new Date().toISOString();
-  const summary: Record<
-    string,
-    Record<string, { taskDone: boolean; failed: string[]; skipped?: boolean }>
-  > = {};
+  const prev = readPreviousRun();
+  const summary: RunSummary = {};
+  const skippedReason = new Map<string, string>();
   let captured = 0;
 
   for (const scenario of SCENARIOS) {
@@ -122,6 +233,7 @@ async function main() {
       if (reach !== "ok") {
         summary[scenario.name][entry.model] = { taskDone: false, failed: [], skipped: true };
         const why = reach === "not-pulled" ? "not pulled" : "endpoint down";
+        skippedReason.set(entry.model, why);
         console.log(`  ${pad(label, labelW)}  (${why} - skipped)`);
         continue;
       }
@@ -200,6 +312,22 @@ async function main() {
     `\ntaskDone ${done}/${attempted} · ${captured} failure transcript(s) in ` +
       `${CAPTURE_DIR.replace(`${REPO_ROOT}/`, "")} · summary → scenario-results.jsonl`,
   );
+
+  const markdown = renderMarkdown({
+    runStamp,
+    models,
+    skippedReason,
+    summary,
+    prev,
+    done,
+    attempted,
+    captured,
+  });
+  writeFileSync(MARKDOWN_OUT, markdown);
+  console.log(
+    `\n${"─".repeat(4)} paste into the release PR (also written to scenario-matrix.md) ${"─".repeat(4)}\n`,
+  );
+  console.log(markdown);
 }
 
 main().catch((err) => {
