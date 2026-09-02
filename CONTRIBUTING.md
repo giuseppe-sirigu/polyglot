@@ -116,6 +116,8 @@ From then on, every release goes through CI with no credentials on the runner.
 
 ### Cutting a release
 
+[`RELEASING.md`](RELEASING.md) is the print-and-tick checklist. The short version:
+
 1. Merge the PRs you want in the release (each carrying its changeset).
 2. Run `pnpm scenario:live` against your local models and paste the `model x
    invariant` table into the release PR. Nothing should have regressed from the
