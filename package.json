@@ -23,12 +23,12 @@
     "publish:manual": "pnpm build && d=$(mktemp -d) && pnpm --filter @usepolyglot/cli pack --pack-destination \"$d\" && npm publish \"$d\"/usepolyglot-cli-*.tgz --access public"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.11",
+    "@biomejs/biome": "^1.9.4",
     "@changesets/cli": "^3.0.1",
-    "@types/node": "^26.4.0",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.6"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["@biomejs/biome", "esbuild"]

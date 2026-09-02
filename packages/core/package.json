@@ -25,16 +25,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.122.0",
+    "@anthropic-ai/sdk": "^0.32.1",
     "@modelcontextprotocol/sdk": "^1.11.0",
     "ajv": "^8.17.1",
-    "glob": "^13.0.6",
+    "glob": "^11.0.0",
     "jsonrepair": "^3.11.2",
     "minimatch": "^10.0.1",
-    "openai": "^7.8.0",
+    "openai": "^4.77.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "typescript": "^7.0.2"
+    "typescript": "^5.7.2"
   }
 }
