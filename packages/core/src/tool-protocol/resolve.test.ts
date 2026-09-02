@@ -32,6 +32,24 @@ function buildRegistry(): ToolRegistry {
       return textResult(`contents of ${(input as { path: string }).path}`);
     },
   });
+  registry.register({
+    name: "edit_file",
+    description: "Edit a file.",
+    permission: "write",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        old_string: { type: "string" },
+        new_string: { type: "string" },
+      },
+      required: ["path", "old_string", "new_string"],
+      additionalProperties: false,
+    },
+    async execute() {
+      return textResult("edited");
+    },
+  });
   return registry;
 }
 
@@ -206,5 +224,61 @@ describe("resolveEnvelope", () => {
     const registry = buildRegistry();
     const result = resolveEnvelope(fencedEnvelope('{"path": "a.ts"}'), registry);
     expect("message" in result).toBe(true);
+  });
+
+  describe("recovers edit_file args with raw newlines / unescaped quotes", () => {
+    const FILE_OLD = 'switch (cmd) {\n  case "list":\n    console.log("hi");\n    break;\n}';
+    const FILE_NEW = `${FILE_OLD}\n  case "count":\n    console.log(items.length);\n    break;`;
+
+    it("single object, raw newlines and unescaped double-quotes in both values", () => {
+      const body = `{"path":"todo.mjs","old_string":"${FILE_OLD}","new_string":"${FILE_NEW}"}`;
+      const result = resolveEnvelope(xmlEnvelope("edit_file", body), buildRegistry());
+      expect("message" in result).toBe(false);
+      if (!("message" in result)) {
+        expect(result.input).toEqual({
+          path: "todo.mjs",
+          old_string: FILE_OLD,
+          new_string: FILE_NEW,
+        });
+      }
+    });
+
+    it("arguments split across two back-to-back objects", () => {
+      const body =
+        `{"path":"todo.mjs","old_string":"${FILE_OLD}"}\n` + `{"new_string":"${FILE_NEW}"}`;
+      const result = resolveEnvelope(xmlEnvelope("edit_file", body), buildRegistry());
+      expect("message" in result).toBe(false);
+      if (!("message" in result)) {
+        expect(result.input).toEqual({
+          path: "todo.mjs",
+          old_string: FILE_OLD,
+          new_string: FILE_NEW,
+        });
+      }
+    });
+
+    it("tolerates a trailing-brace typo", () => {
+      const body = `{"path":"todo.mjs","old_string":"${FILE_OLD}","new_string":"${FILE_NEW}"}}`;
+      const result = resolveEnvelope(xmlEnvelope("edit_file", body), buildRegistry());
+      expect("message" in result).toBe(false);
+      if (!("message" in result)) {
+        expect((result.input as { new_string: string }).new_string).toBe(FILE_NEW);
+      }
+    });
+
+    it("does not touch a clean, well-escaped edit_file call", () => {
+      const body = JSON.stringify({ path: "a.ts", old_string: "x", new_string: "y" });
+      const result = resolveEnvelope(xmlEnvelope("edit_file", body), buildRegistry());
+      expect("message" in result).toBe(false);
+      if (!("message" in result)) {
+        expect(result.input).toEqual({ path: "a.ts", old_string: "x", new_string: "y" });
+      }
+    });
+
+    it("still errors when a required parameter is genuinely absent", () => {
+      const body = '{"path":"todo.mjs","new_string":"whatever"}';
+      const result = resolveEnvelope(xmlEnvelope("edit_file", body), buildRegistry());
+      expect("message" in result).toBe(true);
+    });
   });
 });
