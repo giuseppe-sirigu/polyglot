@@ -66,14 +66,19 @@ export function scriptedAdapter(
   };
 }
 
-/** Wraps an adapter to count `chat()` calls and abort once `maxCalls` is hit. */
+/**
+ * Wraps an adapter to count `chat()` calls (aborting once `maxCalls` is hit) and record each
+ * completion's raw text - the latter is what makes a live-run failure promotable into a
+ * scripted fixture.
+ */
 function withCallBudget(
   adapter: ProviderAdapter,
   maxCalls: number,
   onExceed: () => void,
-): ProviderAdapter & { calls: number } {
+): ProviderAdapter & { calls: number; completions: string[] } {
   const wrapper = {
     calls: 0,
+    completions: [] as string[],
     id: adapter.id,
     capabilities: adapter.capabilities,
     async *chat(
@@ -85,7 +90,12 @@ function withCallBudget(
         onExceed();
         throw new Error(`scenario model-call budget exceeded (${maxCalls})`);
       }
-      yield* adapter.chat(request, o);
+      let text = "";
+      for await (const event of adapter.chat(request, o)) {
+        if (event.type === "text_delta") text += event.delta;
+        yield event;
+      }
+      wrapper.completions.push(text);
     },
   };
   return wrapper;
@@ -101,6 +111,9 @@ export interface ScenarioBudget {
 export interface RunScenarioOptions {
   /** Scripted completions (one per step), or a real adapter for live runs. */
   model: string[] | ProviderAdapter;
+  /** The model id to send to a real adapter (ignored for scripted runs). Required when `model`
+   * is a ProviderAdapter - the adapter forwards it as the provider's `model` param. */
+  modelId?: string;
   userInput: string;
   /** Seed the temp working dir from a bundled fixture directory. */
   fixture?: "todo-demo";
@@ -139,6 +152,8 @@ export interface ScenarioResult {
   /** Whether a runaway budget (model calls / wall clock) tripped. */
   abortedByBudget: boolean;
   modelCallCount: number;
+  /** Raw text of each model completion, in order - a scripted transcript of this exact run. */
+  completions: string[];
   toolCalls: ToolCallRecord[];
   toolResults: ToolResultRecord[];
   /** Parse errors surfaced to the model (bad tool-call syntax). */
@@ -199,7 +214,7 @@ export async function runScenario(opts: RunScenarioOptions): Promise<ScenarioRes
       controller.abort();
     });
 
-    const model = adapter.id === "scripted" ? "scripted-model" : "live-model";
+    const model = Array.isArray(opts.model) ? "scripted-model" : (opts.modelId ?? "scenario-model");
     const session = createSession({ cwd, provider: "scenario", model });
     const gate = opts.gate ?? new AllowAllGate();
     const tools = buildAgentTools({
@@ -297,6 +312,7 @@ export async function runScenario(opts: RunScenarioOptions): Promise<ScenarioRes
       stopReason,
       abortedByBudget,
       modelCallCount: adapter.calls,
+      completions: adapter.completions,
       toolCalls,
       toolResults,
       parseErrors,

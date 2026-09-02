@@ -3,7 +3,13 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": false,
-    "ignore": ["dist", "coverage", "packages/core/src/testing/fixtures", "**/captured-failures"]
+    "ignore": [
+      "dist",
+      "coverage",
+      "packages/core/src/testing/fixtures",
+      "**/captured-failures",
+      "scenario-results.jsonl"
+    ]
   },
   "formatter": {
     "enabled": true,
