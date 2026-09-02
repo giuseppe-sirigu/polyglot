@@ -420,7 +420,11 @@ export function App({
           text: `Updating polyglot ${result.currentVersion} -> ${result.latestVersion} in the background…`,
         });
         const update = await runSelfUpdate(__PACKAGE_NAME__);
-        pushItem({ kind: "system", tone: update.ok ? "info" : "warn", text: update.message });
+        pushItem({
+          kind: "system",
+          tone: update.ok || update.transient ? "info" : "warn",
+          text: update.message,
+        });
       } else {
         pushItem({
           kind: "system",
