@@ -97,6 +97,20 @@ export const SettingsSchema = z.object({
       path: z.string().optional(),
     })
     .optional(),
+  /** Model routing. All entries are model ids/labels resolved against `models[]` (or the
+   * startup model), the same way `/model <query>` matches. Left without schema defaults so
+   * layered configs can tell "unset" from "set" - `failover` defaults to `[]` in loader.ts. */
+  routing: z
+    .object({
+      /** Ordered fallback models. If the active model errors or stops producing valid tool
+       * calls mid-turn, the turn continues on the next one (sticky for the session). */
+      failover: z.array(z.string()).optional(),
+      /** Model to run `/compact` and automatic compaction on, instead of the session's. */
+      summaryModel: z.string().optional(),
+      /** Model to run plan-mode turns on. Disabled for the session after a manual `/model`. */
+      planModel: z.string().optional(),
+    })
+    .optional(),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;

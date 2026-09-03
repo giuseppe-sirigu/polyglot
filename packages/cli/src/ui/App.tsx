@@ -59,6 +59,7 @@ import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type ResolvedModel,
+  buildFailoverChain,
   configuredModelEntries,
   resolveConfiguredModel,
 } from "../modelRouting.js";
@@ -274,30 +275,29 @@ export function App({
   }
   const gate = gateRef.current;
 
-  // `subAgentModel` (settings) → a ready adapter for `task` sub-agents to run on, or null when
-  // it's unset / points at the active model / doesn't match anything configured. Re-resolved on
-  // a `/model` switch so a `subAgentModel` that names the now-active model tracks it.
+  // Shared context for resolving a model id/label (`subAgentModel`, `routing.*`) against the
+  // configured list. `current` is the model running right now, so it stays fresh across `/model`
+  // switches and failovers.
+  const routingCtx = useMemo(
+    () => ({
+      modelEntries,
+      current: {
+        adapter: activeAdapter,
+        provider: activeModel.provider,
+        model: activeModel.model,
+        label: activeModel.label,
+      },
+      defaults: { structuredOutput: resolved.engine.structuredOutput },
+    }),
+    [modelEntries, activeAdapter, activeModel, resolved.engine.structuredOutput],
+  );
+
+  // `subAgentModel` (settings) → a ready adapter for `task` sub-agents, or null when it's unset /
+  // names the active model / matches nothing configured.
   const subAgent = useMemo<ResolvedModel | null>(
     () =>
-      resolved.subAgentModel
-        ? resolveConfiguredModel(resolved.subAgentModel, {
-            modelEntries,
-            current: {
-              adapter: activeAdapter,
-              provider: activeModel.provider,
-              model: activeModel.model,
-              label: activeModel.label,
-            },
-            defaults: { structuredOutput: resolved.engine.structuredOutput },
-          })
-        : null,
-    [
-      resolved.subAgentModel,
-      resolved.engine.structuredOutput,
-      modelEntries,
-      activeAdapter,
-      activeModel,
-    ],
+      resolved.subAgentModel ? resolveConfiguredModel(resolved.subAgentModel, routingCtx) : null,
+    [resolved.subAgentModel, routingCtx],
   );
   const warnedSubAgentRef = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: pushItem is redefined each render but functionally stable (it only calls setItems); the ref guard makes this fire at most once anyway
@@ -311,6 +311,44 @@ export function App({
       });
     }
   }, [subAgent, resolved.subAgentModel]);
+
+  // `routing.failover` → the ordered fallback chain passed to runAgentTurn. Unresolvable specs
+  // become one-time warnings.
+  const failover = useMemo(
+    () => buildFailoverChain(resolved.routing.failover, routingCtx),
+    [resolved.routing.failover, routingCtx],
+  );
+  const warnedFailoverRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see the sub-agent warn effect above
+  useEffect(() => {
+    if (failover.warnings.length > 0 && !warnedFailoverRef.current) {
+      warnedFailoverRef.current = true;
+      for (const w of failover.warnings) pushItem({ kind: "system", tone: "warn", text: w });
+    }
+  }, [failover]);
+
+  // A user `/model` switch this session disables plan-mode auto-routing - an explicit choice
+  // shouldn't be silently overridden every plan turn.
+  const manualModelOverrideRef = useRef(false);
+
+  // `routing.summaryModel` → the model `/compact` and auto-compaction run on (null = the
+  // session's own model).
+  const summaryModel = useMemo(
+    () =>
+      resolved.routing.summaryModel
+        ? resolveConfiguredModel(resolved.routing.summaryModel, routingCtx)
+        : null,
+    [resolved.routing.summaryModel, routingCtx],
+  );
+  async function compactWithRouting(): Promise<{ before: number; after: number; note: string }> {
+    const routed = summaryModel && summaryModel !== routingCtx.current ? summaryModel : null;
+    const { before, after } = await compactSession(
+      session,
+      routed ? routed.adapter : activeAdapter,
+      routed ? { model: routed.model } : {},
+    );
+    return { before, after, note: routed ? ` (summarized with ${routed.label})` : "" };
+  }
 
   // Rebuilt whenever the active model changes - this is what keeps the "task" sub-agent tool
   // (which captures `adapter` by closure at construction, in core's buildAgentTools) from
@@ -702,11 +740,11 @@ export function App({
 
     if (value === "/compact") {
       pushItem({ kind: "user", text: value });
-      const { before, after } = await compactSession(session, activeAdapter);
+      const { before, after, note } = await compactWithRouting();
       pushItem({
         kind: "system",
         tone: "info",
-        text: `Compacted session: ~${before} -> ~${after} tokens`,
+        text: `Compacted session: ~${before} -> ~${after} tokens${note}`,
       });
       return;
     }
@@ -776,11 +814,11 @@ export function App({
     }
 
     if (shouldCompact(session, activeAdapter)) {
-      const { before, after } = await compactSession(session, activeAdapter);
+      const { before, after, note } = await compactWithRouting();
       pushItem({
         kind: "system",
         tone: "info",
-        text: `Context was getting large - compacted automatically: ~${before} -> ~${after} tokens`,
+        text: `Context was getting large - compacted automatically: ~${before} -> ~${after} tokens${note}`,
       });
     }
 
@@ -798,15 +836,41 @@ export function App({
     // the UI immediately regardless; every callback below checks isStale() first so that if
     // the old promise does eventually settle, it can't clobber a UI that's already moved on.
     const isStale = () => abortControllerRef.current !== controller;
+
+    // Plan-mode turns can route to a dedicated planning model - per turn, restored after, unless
+    // a failover made a sticky switch mid-turn. Disabled once the user manually picks a model.
+    const planRoute =
+      mode === "plan" && resolved.routing.planModel && !manualModelOverrideRef.current
+        ? resolveConfiguredModel(resolved.routing.planModel, routingCtx)
+        : null;
+    const routedPlan = planRoute && planRoute !== routingCtx.current ? planRoute : null;
+    const restoreModel = session.model;
+    const restoreProvider = session.provider;
+    if (routedPlan) {
+      session.model = routedPlan.model;
+      session.provider = routedPlan.provider;
+      pushItem({ kind: "system", tone: "info", text: `Planning with ${routedPlan.label}.` });
+    }
+    let fellBack = false;
+
     try {
       await runAgentTurn({
         session,
-        adapter: activeAdapter,
+        adapter: routedPlan ? routedPlan.adapter : activeAdapter,
         userInput: value,
         systemPrompt,
+        buildSystemPrompt: ({ structured }) =>
+          assembleSystemPrompt({
+            tools: tools.list(),
+            cwd: session.cwd,
+            mode,
+            structured,
+            projectInstructions: resolved.projectInstructions.text,
+          }),
         tools,
         gate,
         signal: controller.signal,
+        failover: failover.chain,
         onMessage: resolved.persistTranscripts
           ? (message) => persistMessage(session.id, message)
           : undefined,
@@ -894,6 +958,26 @@ export function App({
           if (event.type === "agent_stop" && event.reason === "max_steps") {
             pushItem({ kind: "system", tone: "warn", text: "Hit the step limit for this turn." });
           }
+          if (event.type === "model_fell_back") {
+            fellBack = true;
+            pushItem({
+              kind: "system",
+              tone: "warn",
+              text: `${event.from} failed (${event.reason}) - continuing on ${event.to}. Run /model to switch back.`,
+            });
+            const target = failover.chain.find((f) => f.model === event.to);
+            if (target) {
+              void Promise.resolve(target.getAdapter()).then((a) => {
+                if (isStale()) return;
+                setActiveAdapter(a);
+                setActiveModel({
+                  provider: target.provider as "anthropic" | "openai-compatible",
+                  model: target.model,
+                  label: target.label ?? target.model,
+                });
+              });
+            }
+          }
         },
       });
     } catch (err) {
@@ -907,6 +991,11 @@ export function App({
         });
       }
     } finally {
+      // Undo a per-turn plan-model swap. A mid-turn failover is sticky and wins - leave it.
+      if (routedPlan && !fellBack) {
+        session.model = restoreModel;
+        session.provider = restoreProvider;
+      }
       if (!isStale()) {
         abortControllerRef.current = null;
         cancelStreamFlush();
@@ -1089,6 +1178,7 @@ export function App({
       );
       session.model = match.model;
       session.provider = match.provider;
+      manualModelOverrideRef.current = true;
       setActiveAdapter(newAdapter);
       setActiveModel({ provider: match.provider, model: match.model, label: match.label });
       noteSwitch(`Switched to ${match.label}.`);

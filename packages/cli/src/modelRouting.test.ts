@@ -2,6 +2,7 @@ import type { ModelEntry, ProviderAdapter } from "@usepolyglot/core";
 import { describe, expect, it } from "vitest";
 import {
   type ResolvedModel,
+  buildFailoverChain,
   configuredModelEntries,
   resolveConfiguredModel,
 } from "./modelRouting.js";
@@ -53,6 +54,27 @@ describe("resolveConfiguredModel", () => {
       defaults: { structuredOutput: true },
     });
     expect(r?.adapter.capabilities.structuredOutput).toBe(true);
+  });
+});
+
+describe("buildFailoverChain", () => {
+  it("resolves each spec in order and skips the running model", () => {
+    const { chain, warnings } = buildFailoverChain(["qwen3-coder", "llama3.2:3b"], ctx);
+    expect(warnings).toEqual([]);
+    expect(chain.map((c) => c.model)).toEqual(["llama3.2:3b"]);
+    expect(chain[0]?.getAdapter()).toBe(chain[0]?.getAdapter()); // stable across calls
+  });
+
+  it("collects a warning for a spec that matches nothing configured", () => {
+    const { chain, warnings } = buildFailoverChain(["nope", "llama3.2:3b"], ctx);
+    expect(chain.map((c) => c.model)).toEqual(["llama3.2:3b"]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("nope");
+  });
+
+  it("dedupes repeated specs", () => {
+    const { chain } = buildFailoverChain(["llama3.2:3b", "Llama Small"], ctx);
+    expect(chain).toHaveLength(1);
   });
 });
 

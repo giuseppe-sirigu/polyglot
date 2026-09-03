@@ -16,6 +16,20 @@ import type { ToolRegistry } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
 import { executeToolCall } from "./executor.js";
 
+/** A model to fall back to when the active one fails mid-turn. The caller pre-resolves the
+ * model and hands over a thunk for the adapter (built lazily / memoized so a chain that never
+ * fires costs nothing). */
+export interface FailoverModel {
+  model: string;
+  provider: string;
+  label?: string;
+  getAdapter: () => ProviderAdapter | Promise<ProviderAdapter>;
+  /** Rebuilds the system prompt for this model's tool-call protocol - only needed when it
+   * differs from the primary's (structured vs free-text). Falls back to
+   * `RunAgentTurnOptions.buildSystemPrompt`, then the original `systemPrompt` string. */
+  buildSystemPrompt?: (ctx: { structured: boolean }) => string;
+}
+
 export interface RunAgentTurnOptions {
   session: Session;
   adapter: ProviderAdapter;
@@ -32,6 +46,12 @@ export interface RunAgentTurnOptions {
    * calls return an error result instead of spawning - bounds cost when a model loops on
    * delegation. */
   maxSubAgentSpawns?: number;
+  /** Ordered fallback models. On a provider error or a give-up (`unreliable_model`) mid-turn,
+   * the turn continues on the next one - sticky: `session.model` / `session.provider` are
+   * updated so all downstream attribution follows. Each model is tried at most once per turn. */
+  failover?: FailoverModel[];
+  /** Rebuilds the system prompt after a failover, for the new model's tool-call protocol. */
+  buildSystemPrompt?: (ctx: { structured: boolean }) => string;
 }
 
 const DEFAULT_MAX_STEPS = 25;
@@ -90,11 +110,45 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
   let consecutiveParseFailures = 0;
   let subAgentSpawns = 0;
 
+  // Which model is actually running this turn. Starts as the caller's; a failover swaps the
+  // adapter + system prompt here and rewrites `session.model` / `session.provider` (sticky) so
+  // usage / reliability accounting - which key off the session - stay correct with no change to
+  // the event contract.
+  let activeAdapter = adapter;
+  let activeSystemPrompt = systemPrompt;
+  const failoverChain = [...(opts.failover ?? [])];
+
+  /** Swaps to the next failover model, if any. Returns whether it did. The caller then
+   * `step--; continue`s so the swap doesn't burn a step. */
+  async function failover(reason: "error" | "unreliable_model", detail?: string): Promise<boolean> {
+    const next = failoverChain.shift();
+    if (!next) return false;
+    // Drop the failed model's just-pushed completion so it can't prime the fallback to imitate
+    // its broken output. A no-op at the sites where nothing was pushed this step yet.
+    if (session.messages.at(-1)?.role === "assistant") session.messages.pop();
+    onEvent({
+      type: "model_fell_back",
+      from: session.model,
+      to: next.model,
+      reason,
+      ...(detail ? { detail } : {}),
+    });
+    activeAdapter = await next.getAdapter();
+    session.model = next.model;
+    session.provider = next.provider;
+    activeSystemPrompt =
+      (next.buildSystemPrompt ?? opts.buildSystemPrompt)?.({
+        structured: activeAdapter.capabilities.structuredOutput,
+      }) ?? activeSystemPrompt;
+    consecutiveParseFailures = 0;
+    return true;
+  }
+
   for (let step = 0; step < maxSteps; step++) {
     onEvent({ type: "turn_start" });
 
     const chatMessages = [
-      { role: "system" as const, content: systemPrompt },
+      { role: "system" as const, content: activeSystemPrompt },
       ...session.messages.map((m) => ({ role: m.role, content: m.content })),
     ];
 
@@ -103,7 +157,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     // tool-call syntax becomes structurally impossible rather than best-effort tolerated. The
     // free-text tag protocol (ToolCallStreamParser) stays the default/fallback for providers
     // that don't support it.
-    const structured = adapter.capabilities.structuredOutput;
+    const structured = activeAdapter.capabilities.structuredOutput;
     const responseSchema = structured ? buildEnvelopeSchema(tools.list()) : undefined;
 
     let fullText = "";
@@ -111,7 +165,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     const liveParser = new ToolCallStreamParser();
 
     try {
-      for await (const event of adapter.chat(
+      for await (const event of activeAdapter.chat(
         { model: session.model, messages: chatMessages, responseSchema },
         { signal },
       )) {
@@ -149,6 +203,11 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
       }
     } catch (err) {
       onEvent({ type: "turn_end", stopReason: "error" });
+      // A provider error (5xx, timeout, auth) - not an abort - falls over to the next model.
+      if (!signal.aborted && err instanceof Error && (await failover("error", err.message))) {
+        step--;
+        continue;
+      }
       if (structured && err instanceof Error) {
         throw new Error(
           `Structured-output request failed (the backend may not support response_format/json_schema): ${err.message}`,
@@ -169,6 +228,12 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
       const parsed = parseStructuredEnvelope(fullText);
       if (!parsed.ok) {
         onEvent({ type: "turn_end", stopReason });
+        // Try a failover model before giving up (fullText isn't in history yet, so the malformed
+        // JSON never reaches the fallback).
+        if (await failover("unreliable_model", parsed.error)) {
+          step--;
+          continue;
+        }
         onEvent({
           type: "tool_parse_error",
           toolCallId: crypto.randomUUID(),
@@ -205,11 +270,15 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
       // No tool call this step. Normally that means the model is finished - but if it was
       // mid-recovery from parse errors (consecutiveParseFailures > 0) and just bailed to prose
       // ("can you extract the code and paste it yourself"), that's a give-up, not a completion.
-      // Report it honestly so the UI warns instead of looking like success.
-      onEvent({
-        type: "agent_stop",
-        reason: consecutiveParseFailures > 0 ? "unreliable_model" : "done",
-      });
+      if (consecutiveParseFailures > 0) {
+        if (await failover("unreliable_model")) {
+          step--;
+          continue;
+        }
+        onEvent({ type: "agent_stop", reason: "unreliable_model" });
+        return;
+      }
+      onEvent({ type: "agent_stop", reason: "done" });
       return;
     }
 
@@ -328,6 +397,10 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
       consecutiveParseFailures += 1;
     }
     if (consecutiveParseFailures > maxConsecutiveParseFailures) {
+      if (await failover("unreliable_model")) {
+        step--;
+        continue;
+      }
       onEvent({ type: "agent_stop", reason: "unreliable_model" });
       return;
     }
