@@ -1,5 +1,19 @@
 # @usepolyglot/cli
 
+## 0.7.0
+
+### Minor Changes
+
+- c9c79f6: Anthropic prompt caching. The system prompt (persona + project instructions + tool docs) is now sent as a cached block, so from the second turn of a session on it's a cache read (~0.1x input cost and lower latency) instead of being re-billed in full. `/cost` reflects the discount automatically. Requires `@anthropic-ai/sdk` ^0.122.0 (bumped from 0.32).
+- 08329b0: Model failover. When the active model errors out (network / 5xx / auth) or stops producing valid tool calls mid-turn, the turn now continues on the next model in a configured `routing.failover` list (or `POLYGLOT_ROUTING_FAILOVER`) instead of stopping. The switch is sticky for the rest of the session and shown in the transcript; `polyglot -p --output-format json` gains a `fell_back_to` array.
+  
+  Two opt-in routing knobs alongside it: `routing.summaryModel` runs `/compact` and automatic compaction on a (typically cheaper) model, and `routing.planModel` runs plan-mode turns on a dedicated model — disabled for the session once you switch models manually with `/model`.
+- 4e60218: New per-model reliability tally for the session: how many tool calls a model made, how many needed repair, how many failed to parse, and how many times it gave up. Surfaced in three places — a `reliability:` line in `/status`, a new `/reliability` command with the per-model breakdown, and a note next to each model in the `/model` picker (e.g. "92% clean this session" / "3 parse errors this session"). The status bar shows a `⚠N` / `NN% ok` segment once something's worth flagging. Headless `-p --output-format json` gains a `reliability` object. Memory-only — not persisted across `--resume`.
+- 5cdec58: `polyglot share <id|path>` exports a session transcript to a Markdown or standalone-HTML file — for pasting into a PR, an issue, or a bug report. Secret-looking values (cloud keys, bearer tokens, private-key blocks, `KEY=...` assignments) are scrubbed by default; `--no-redact` keeps them, `--full` includes complete tool-call args and result bodies, `--format html` writes a self-contained page. The raw session file on disk is never modified. There's also a `/share` command in the TUI.
+  
+  `--resume` now also accepts a path to a `.jsonl` session file, so a teammate can hand you a session and you continue it.
+- d1203db: Configurable sub-agent model. Set `subAgentModel` in settings.json (or `POLYGLOT_SUB_AGENT_MODEL`) to a model id/label and `task` sub-agents run on it instead of inheriting the parent's model — an easy cost win for delegated grunt work. Sub-agent token usage now rolls up into the session totals, so `/cost` and the `-p --output-format json` envelope show the sub-agent model as its own per-model row. Unset = sub-agents use the parent model, as before.
+
 ## 0.6.0
 
 ### Minor Changes
