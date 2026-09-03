@@ -24,6 +24,10 @@ describe("matchSlashCommands", () => {
     expect(matchSlashCommands("/raw").map((c) => c.command)).toEqual(["/raw"]);
   });
 
+  it("matches /reliability", () => {
+    expect(matchSlashCommands("/reli").map((c) => c.command)).toEqual(["/reliability"]);
+  });
+
   it("is case-insensitive", () => {
     expect(matchSlashCommands("/MO").map((c) => c.command)).toEqual(["/model"]);
   });

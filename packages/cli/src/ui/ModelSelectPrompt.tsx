@@ -5,11 +5,13 @@ import { theme } from "./theme.js";
 
 export interface ModelSelectPromptProps {
   options: ModelOption[];
+  /** Optional short per-model note (this session's tool-call reliability), keyed by model id. */
+  badges?: Record<string, string>;
   onSelect: (option: ModelOption) => void;
   onCancel: () => void;
 }
 
-export function ModelSelectPrompt({ options, onSelect, onCancel }: ModelSelectPromptProps) {
+export function ModelSelectPrompt({ options, badges, onSelect, onCancel }: ModelSelectPromptProps) {
   const [cursor, setCursor] = useState(() =>
     Math.max(
       0,
@@ -60,6 +62,7 @@ export function ModelSelectPrompt({ options, onSelect, onCancel }: ModelSelectPr
               <Text dimColor>
                 {" "}
                 - [{o.provider}] {o.model}
+                {badges?.[o.model] ? ` · ${badges[o.model]}` : ""}
               </Text>
             </Box>
           );

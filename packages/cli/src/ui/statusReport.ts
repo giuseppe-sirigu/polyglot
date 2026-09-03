@@ -21,6 +21,8 @@ export interface StatusReportFields {
   contextUsedPercent: number | undefined;
   /** One-line cost summary (see costReport.formatCostLine). */
   cost: string;
+  /** One-line reliability summary (see reliabilityReport.formatReliabilityLine). */
+  reliability: string;
   cwd: string;
 }
 
@@ -74,6 +76,7 @@ export function formatStatusReport(f: StatusReportFields): string {
     `  mcp servers:  ${f.mcpServers.length > 0 ? f.mcpServers.join(", ") : "none"}`,
     `  instructions: ${f.instructions}`,
     `  cost:         ${f.cost}`,
+    `  reliability:  ${f.reliability}`,
     `  cwd:          ${f.cwd}`,
     `  session:      ${f.sessionId} · ${f.messageCount} message(s)${
       f.contextUsedPercent === undefined ? "" : ` · context ~${f.contextUsedPercent}%`

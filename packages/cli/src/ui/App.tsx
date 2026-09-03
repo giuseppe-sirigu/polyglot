@@ -11,6 +11,9 @@ import {
   type Session,
   type SessionSummary,
   type UserQuestionRequest,
+  addGiveUp,
+  addParseError,
+  addToolCall,
   addTurnUsage,
   assembleSystemPrompt,
   auditEventFromAgentEvent,
@@ -25,6 +28,7 @@ import {
   createSession,
   createWebSearchTool,
   editFileTool,
+  emptyReliabilityTotals,
   emptyUsageTotals,
   findModelOption,
   getAutoUpdatePreference,
@@ -70,6 +74,11 @@ import { TranscriptGroupView, groupKey } from "./TranscriptGroupView.js";
 import { TranscriptLine } from "./TranscriptLine.js";
 import { formatCostLine, formatCostReport } from "./costReport.js";
 import { renderMarkdown } from "./markdown.js";
+import {
+  formatReliabilityLine,
+  formatReliabilityReport,
+  reliabilityBadge,
+} from "./reliabilityReport.js";
 import { formatRepairReport } from "./repairReport.js";
 import { formatStatusReport } from "./statusReport.js";
 import { theme } from "./theme.js";
@@ -607,6 +616,7 @@ export function App({
           messageCount: session.messages.length,
           contextUsedPercent,
           cost: formatCostLine(session.usage, anyPricing),
+          reliability: formatReliabilityLine(session.reliability, activeModel.model),
           cwd: session.cwd,
         }),
       });
@@ -619,6 +629,16 @@ export function App({
         kind: "system",
         tone: "info",
         text: formatCostReport(session.usage, { anyPricing }),
+      });
+      return;
+    }
+
+    if (value === "/reliability") {
+      pushItem({ kind: "user", text: value });
+      pushItem({
+        kind: "system",
+        tone: "info",
+        text: formatReliabilityReport(session.reliability),
       });
       return;
     }
@@ -774,6 +794,11 @@ export function App({
               correctedFromName: event.correctedFromName,
               ...(event.repaired ? { repaired: true, rawCall: event.rawCall } : {}),
             });
+            session.reliability = addToolCall(session.reliability ?? emptyReliabilityTotals(), {
+              model: session.model,
+              repaired: !!event.repaired,
+              nameCorrected: !!event.correctedFromName,
+            });
           }
           if (event.type === "tool_result") {
             pushLiveItem({
@@ -790,6 +815,10 @@ export function App({
               toolCallId: event.toolCallId,
               message: event.message,
             });
+            session.reliability = addParseError(
+              session.reliability ?? emptyReliabilityTotals(),
+              session.model,
+            );
           }
           if (event.type === "usage" && event.inputTokens > 0) {
             // runAgentTurn already updated session.lastContextTokens in memory (drives the
@@ -805,6 +834,10 @@ export function App({
             if (resolved.persistTranscripts) void persistTurnUsage(session.id, turn);
           }
           if (event.type === "agent_stop" && event.reason === "unreliable_model") {
+            session.reliability = addGiveUp(
+              session.reliability ?? emptyReliabilityTotals(),
+              session.model,
+            );
             pushItem({
               kind: "system",
               tone: "warn",
@@ -1130,6 +1163,11 @@ export function App({
         ) : modelRequest ? (
           <ModelSelectPrompt
             options={modelRequest}
+            badges={Object.fromEntries(
+              modelRequest
+                .map((o) => [o.model, reliabilityBadge(session.reliability, o.model)] as const)
+                .filter((e): e is [string, string] => e[1] !== undefined),
+            )}
             onSelect={handleModelSelect}
             onCancel={handleModelCancel}
           />
@@ -1148,6 +1186,7 @@ export function App({
           model={activeModel.label}
           contextUsedPercent={contextUsedPercent}
           sessionCostUSD={session.usage?.costUSD}
+          reliability={session.reliability?.byModel[activeModel.model]}
           sessionLabel={session.name}
         />
       </Box>

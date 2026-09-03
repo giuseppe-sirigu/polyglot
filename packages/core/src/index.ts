@@ -94,6 +94,16 @@ export type {
   TurnUsage,
 } from "./session/usage-accounting.js";
 export {
+  emptyReliabilityTotals,
+  addToolCall,
+  addParseError,
+  addGiveUp,
+} from "./session/reliability-accounting.js";
+export type {
+  SessionReliabilityTotals,
+  ModelReliabilityTotals,
+} from "./session/reliability-accounting.js";
+export {
   PRICING_TABLE,
   resolveModelPricing,
   computeCost,
