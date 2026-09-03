@@ -13,9 +13,58 @@ export type TurnItem =
   | { kind: "tool_parse_error"; message: string; toolCallId: string }
   | { kind: "tool_result"; name: string; text: string; isError: boolean; toolCallId?: string };
 
-// Same shape agent/loop.ts wraps a tool result in before feeding it back as a "user" message.
-const TOOL_RESULT_BLOCK =
-  /<tool_result name="([^"]*)"( status="error")?>\n([\s\S]*?)\n<\/tool_result>/g;
+// The exact shape agent/loop.ts's formatToolResultBlock() wraps a tool result in before it's
+// fed back as a "user"-role message. Matching it structurally is how a "user" message that's
+// really a tool result is told apart from a genuine one.
+const RESULT_OPEN = '<tool_result name="';
+const RESULT_ERROR_ATTR = ' status="error"';
+const RESULT_CLOSE = "\n</tool_result>";
+
+export interface ToolResultBlock {
+  name: string;
+  isError: boolean;
+  text: string;
+}
+
+/**
+ * Extracts the `<tool_result …>…</tool_result>` blocks from a persisted "user" message by a
+ * linear `indexOf` scan - deliberately not a regex. The historical `/…([\s\S]*?)\n<\/…>/g`
+ * form is a super-linear-backtracking risk on a hostile session file (a shared `.jsonl`), and
+ * this input can be arbitrarily long (a big file read). Returns `[]` for a genuine user message.
+ */
+export function parseToolResultBlocks(content: string): ToolResultBlock[] {
+  const blocks: ToolResultBlock[] = [];
+  let i = 0;
+  while (true) {
+    const open = content.indexOf(RESULT_OPEN, i);
+    if (open === -1) break;
+    const nameStart = open + RESULT_OPEN.length;
+    const nameEnd = content.indexOf('"', nameStart);
+    if (nameEnd === -1) break;
+
+    let cursor = nameEnd + 1;
+    let isError = false;
+    if (content.startsWith(RESULT_ERROR_ATTR, cursor)) {
+      isError = true;
+      cursor += RESULT_ERROR_ATTR.length;
+    }
+    if (!content.startsWith(">\n", cursor)) {
+      i = nameEnd + 1;
+      continue;
+    }
+    const bodyStart = cursor + 2;
+    const close = content.indexOf(RESULT_CLOSE, bodyStart);
+    if (close === -1) break;
+
+    blocks.push({
+      name: content.slice(nameStart, nameEnd),
+      isError,
+      text: content.slice(bodyStart, close),
+    });
+    i = close + RESULT_CLOSE.length;
+  }
+  return blocks;
+}
 
 function decodeAssistant(content: string, tools: ToolRegistry): TurnItem[] {
   const items: TurnItem[] = [];
@@ -81,14 +130,14 @@ export function decodeSessionTurns(messages: Message[], tools: ToolRegistry): Tu
 
   for (const message of messages) {
     if (message.role === "user") {
-      const blocks = [...message.content.matchAll(TOOL_RESULT_BLOCK)];
+      const blocks = parseToolResultBlocks(message.content);
       if (blocks.length > 0) {
-        blocks.forEach(([, name, errorAttr, text], i) => {
+        blocks.forEach((block, i) => {
           items.push({
             kind: "tool_result",
-            name: name ?? "",
-            text: text ?? "",
-            isError: Boolean(errorAttr),
+            name: block.name,
+            text: block.text,
+            isError: block.isError,
             ...(pendingCallIds[i] ? { toolCallId: pendingCallIds[i] } : {}),
           });
         });

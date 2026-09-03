@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileTool } from "../tools/read.js";
 import { ToolRegistry } from "../tools/types.js";
-import { decodeSessionTurns, serializeSessionHtml, serializeSessionMarkdown } from "./serialize.js";
+import {
+  decodeSessionTurns,
+  parseToolResultBlocks,
+  serializeSessionHtml,
+  serializeSessionMarkdown,
+} from "./serialize.js";
 import type { Message, Session } from "./types.js";
 
 function reg(): ToolRegistry {
@@ -28,6 +33,34 @@ function session(messages: Message[], over: Partial<Session> = {}): Session {
     ...over,
   };
 }
+
+describe("parseToolResultBlocks", () => {
+  it("returns [] for a genuine user message", () => {
+    expect(parseToolResultBlocks("please read app.ts and summarise it")).toEqual([]);
+  });
+
+  it("extracts one block", () => {
+    expect(
+      parseToolResultBlocks('<tool_result name="read_file">\nline one\nline two\n</tool_result>'),
+    ).toEqual([{ name: "read_file", isError: false, text: "line one\nline two" }]);
+  });
+
+  it("extracts several blocks and the error flag", () => {
+    const content =
+      '<tool_result name="a">\nok\n</tool_result>\n\n<tool_result name="b" status="error">\nboom\n</tool_result>';
+    expect(parseToolResultBlocks(content)).toEqual([
+      { name: "a", isError: false, text: "ok" },
+      { name: "b", isError: true, text: "boom" },
+    ]);
+  });
+
+  it("stays linear on a huge unterminated block (no super-linear backtracking)", () => {
+    const evil = `<tool_result name="x">\n${"\n".repeat(200_000)}`;
+    const start = performance.now();
+    expect(parseToolResultBlocks(evil)).toEqual([]);
+    expect(performance.now() - start).toBeLessThan(200);
+  });
+});
 
 describe("decodeSessionTurns", () => {
   it("decodes a tagged tool call and pairs the following result to it", () => {

@@ -88,10 +88,11 @@ export {
 export type { SessionSummary } from "./session/store.js";
 export {
   decodeSessionTurns,
+  parseToolResultBlocks,
   serializeSessionMarkdown,
   serializeSessionHtml,
 } from "./session/serialize.js";
-export type { TurnItem } from "./session/serialize.js";
+export type { ToolResultBlock, TurnItem } from "./session/serialize.js";
 export { redactSecrets } from "./session/redact.js";
 export {
   emptyUsageTotals,
