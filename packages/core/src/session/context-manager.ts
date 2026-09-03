@@ -36,13 +36,15 @@ const SUMMARY_PROMPT =
 /**
  * Collapses everything but the last `keepLastN` messages into one summary message,
  * asking the model itself to produce the summary. Real, working compaction - not a
- * blind truncation - so context survives across the cut.
+ * blind truncation - so context survives across the cut. `opts.model` (+ a matching
+ * `adapter`) runs the summary on a different, typically cheaper model than the session's.
  */
 export async function compactSession(
   session: Session,
   adapter: ProviderAdapter,
-  keepLastN = 6,
+  opts: { keepLastN?: number; model?: string } = {},
 ): Promise<{ before: number; after: number }> {
+  const keepLastN = opts.keepLastN ?? 6;
   const before = sessionContextTokens(session);
   if (session.messages.length <= keepLastN) {
     return { before, after: before };
@@ -56,7 +58,7 @@ export async function compactSession(
   const controller = new AbortController();
   for await (const event of adapter.chat(
     {
-      model: session.model,
+      model: opts.model ?? session.model,
       messages: [
         { role: "system", content: SUMMARY_PROMPT },
         { role: "user", content: transcript },

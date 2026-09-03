@@ -182,6 +182,43 @@ describe("loadConfig audit", () => {
   });
 });
 
+describe("loadConfig routing", () => {
+  const base = { provider: "openai-compatible", model: "m" };
+
+  it("defaults to an empty failover list with no summary/plan model", () => {
+    expect(loadWithSettings(base, null).routing).toEqual({
+      failover: [],
+      summaryModel: undefined,
+      planModel: undefined,
+    });
+  });
+
+  it("resolves from settings and layers project over global", () => {
+    const config = loadWithSettings(
+      { ...base, routing: { failover: ["big"], summaryModel: "small" } },
+      { routing: { failover: ["big", "huge"], planModel: "planner" } },
+    );
+    expect(config.routing).toEqual({
+      failover: ["big", "huge"],
+      summaryModel: "small",
+      planModel: "planner",
+    });
+  });
+
+  it("honours POLYGLOT_ROUTING_FAILOVER (comma-split), POLYGLOT_SUMMARY_MODEL, POLYGLOT_PLAN_MODEL", () => {
+    const config = loadWithSettings({ ...base, routing: { failover: ["x"] } }, null, {
+      POLYGLOT_ROUTING_FAILOVER: " a , b ,, c ",
+      POLYGLOT_SUMMARY_MODEL: "s",
+      POLYGLOT_PLAN_MODEL: "p",
+    });
+    expect(config.routing).toEqual({
+      failover: ["a", "b", "c"],
+      summaryModel: "s",
+      planModel: "p",
+    });
+  });
+});
+
 describe("loadConfig models", () => {
   it("defaults to an empty list when unset anywhere", () => {
     const config = loadWithSettings({ provider: "openai-compatible", model: "m" }, null);

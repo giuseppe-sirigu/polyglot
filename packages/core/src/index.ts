@@ -1,6 +1,7 @@
 export const CORE_VERSION = "0.1.0";
 
 export { runAgentTurn } from "./agent/loop.js";
+export type { FailoverModel, RunAgentTurnOptions } from "./agent/loop.js";
 export { executeToolCall } from "./agent/executor.js";
 export type { AgentEvent } from "./agent/events.js";
 export { PERSONA, assembleSystemPrompt } from "./agent/system-prompt.js";

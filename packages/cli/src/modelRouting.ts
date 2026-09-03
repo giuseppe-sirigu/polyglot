@@ -1,4 +1,5 @@
 import {
+  type FailoverModel,
   type ModelEntry,
   type ProviderAdapter,
   type ResolvedConfig,
@@ -50,7 +51,7 @@ export interface ModelResolutionContext {
  *
  * Note: an openai-compatible target is not capability-probed here, so it inherits the registry
  * defaults (128k context, structuredOutput from config only) - the same gap a runtime `/model`
- * switch has. A6's failover chain adds probing; the sub-agent model does not (yet).
+ * switch has.
  */
 export function resolveConfiguredModel(
   query: string,
@@ -76,4 +77,34 @@ export function resolveConfiguredModel(
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolves an ordered list of `routing.failover` specs into `FailoverModel`s for `runAgentTurn`.
+ * Skips specs that don't match anything configured (each becomes a warning string) and specs
+ * that name the model already running (redundant in a chain). `getAdapter` just returns the
+ * adapter resolved here - kept as a thunk to match the core interface.
+ */
+export function buildFailoverChain(
+  specs: string[],
+  ctx: ModelResolutionContext,
+): { chain: FailoverModel[]; warnings: string[] } {
+  const chain: FailoverModel[] = [];
+  const warnings: string[] = [];
+  for (const spec of specs) {
+    const resolved = resolveConfiguredModel(spec, ctx);
+    if (!resolved) {
+      warnings.push(`routing.failover: "${spec}" isn't a configured model - skipped.`);
+      continue;
+    }
+    if (resolved === ctx.current || resolved.model === ctx.current.model) continue;
+    if (chain.some((c) => c.model === resolved.model)) continue;
+    chain.push({
+      model: resolved.model,
+      provider: resolved.provider,
+      label: resolved.label,
+      getAdapter: () => resolved.adapter,
+    });
+  }
+  return { chain, warnings };
 }

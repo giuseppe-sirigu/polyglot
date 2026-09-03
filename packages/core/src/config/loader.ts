@@ -46,6 +46,9 @@ export interface ResolvedConfig {
   /** `AGENTS.md` / `POLYGLOT.md` contents (project + global), spliced into the system prompt.
    * Always resolved (empty when no file exists or `POLYGLOT_NO_INSTRUCTIONS` is set). */
   projectInstructions: ProjectInstructions;
+  /** Model routing - see SettingsSchema.routing. Always resolved (`failover` defaults to `[]`).
+   * Entries are model ids/labels the frontend resolves against `models[]`. */
+  routing: { failover: string[]; summaryModel?: string; planModel?: string };
 }
 
 /** Resolves the API key for `provider`: the provider-specific env var wins over an explicit
@@ -166,6 +169,14 @@ function mergeSettings(base: Settings, override: Settings): Settings {
             baseURL: override.webSearch?.baseURL ?? base.webSearch?.baseURL,
           }
         : undefined,
+    routing:
+      base.routing || override.routing
+        ? {
+            failover: override.routing?.failover ?? base.routing?.failover,
+            summaryModel: override.routing?.summaryModel ?? base.routing?.summaryModel,
+            planModel: override.routing?.planModel ?? base.routing?.planModel,
+          }
+        : undefined,
     models: mergeModels(base.models, override.models),
     permissions: {
       mode:
@@ -230,6 +241,18 @@ function applyEnvOverrides(settings: Settings, env: NodeJS.ProcessEnv): Settings
     baseURL: env.POLYGLOT_WEBSEARCH_BASE_URL ?? settings.webSearch?.baseURL,
   };
 
+  const failoverEnv = env.POLYGLOT_ROUTING_FAILOVER?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const routing =
+    settings.routing || failoverEnv || env.POLYGLOT_SUMMARY_MODEL || env.POLYGLOT_PLAN_MODEL
+      ? {
+          failover: failoverEnv ?? settings.routing?.failover,
+          summaryModel: env.POLYGLOT_SUMMARY_MODEL ?? settings.routing?.summaryModel,
+          planModel: env.POLYGLOT_PLAN_MODEL ?? settings.routing?.planModel,
+        }
+      : undefined;
+
   return {
     provider,
     model: env.POLYGLOT_MODEL ?? settings.model,
@@ -253,6 +276,7 @@ function applyEnvOverrides(settings: Settings, env: NodeJS.ProcessEnv): Settings
     persistTranscripts,
     retentionDays,
     webSearch,
+    routing,
     models: settings.models,
     permissions: { ...settings.permissions, mode },
     mcpServers: settings.mcpServers,
@@ -310,6 +334,11 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): R
       provider: merged.webSearch?.provider ?? "duckduckgo",
       apiKey: merged.webSearch?.apiKey,
       baseURL: merged.webSearch?.baseURL,
+    },
+    routing: {
+      failover: merged.routing?.failover ?? [],
+      summaryModel: merged.routing?.summaryModel,
+      planModel: merged.routing?.planModel,
     },
     projectInstructions: loadProjectInstructions(cwd, env),
   };

@@ -39,7 +39,11 @@ import {
   writeFileTool,
 } from "@usepolyglot/core";
 import type { CliArgs } from "./args.js";
-import { configuredModelEntries, resolveConfiguredModel } from "./modelRouting.js";
+import {
+  buildFailoverChain,
+  configuredModelEntries,
+  resolveConfiguredModel,
+} from "./modelRouting.js";
 import { applyCapabilityProbe } from "./probe.js";
 
 function readStdin(): Promise<string> {
@@ -210,12 +214,46 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     tools.register(createExitPlanModeTool(gate, async () => false, "manual", persist));
   }
 
-  const systemPrompt = assembleSystemPrompt({
-    tools: tools.list(),
-    cwd: session.cwd,
-    mode,
-    structured: adapter.capabilities.structuredOutput,
-    projectInstructions: resolved.projectInstructions.text,
+  const buildSystemPrompt = ({ structured }: { structured: boolean }) =>
+    assembleSystemPrompt({
+      tools: tools.list(),
+      cwd: session.cwd,
+      mode,
+      structured,
+      projectInstructions: resolved.projectInstructions.text,
+    });
+
+  const routingCtx = {
+    modelEntries: configuredModelEntries(resolved),
+    current: {
+      adapter,
+      provider: resolved.engine.provider,
+      model: session.model,
+      label: session.model,
+    },
+    defaults: { structuredOutput: resolved.engine.structuredOutput },
+  };
+
+  // Plan-mode runs can route to a dedicated planning model.
+  const planRoute =
+    mode === "plan" && resolved.routing.planModel
+      ? resolveConfiguredModel(resolved.routing.planModel, routingCtx)
+      : null;
+  const routedPlan = planRoute && planRoute !== routingCtx.current ? planRoute : null;
+  if (routedPlan) {
+    session.model = routedPlan.model;
+    session.provider = routedPlan.provider;
+    process.stderr.write(`[polyglot] planning with ${routedPlan.label}\n`);
+  }
+
+  const { chain: failoverChain, warnings: failoverWarnings } = buildFailoverChain(
+    resolved.routing.failover,
+    routingCtx,
+  );
+  for (const w of failoverWarnings) process.stderr.write(`[polyglot] ${w}\n`);
+
+  const systemPrompt = buildSystemPrompt({
+    structured: (routedPlan ? routedPlan.adapter : adapter).capabilities.structuredOutput,
   });
 
   const controller = new AbortController();
@@ -225,16 +263,19 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   let assistantText = "";
   let stopReason: "done" | "max_steps" | "unreliable_model" = "done";
   let isError = false;
+  const fellBackTo: string[] = [];
 
   try {
     await runAgentTurn({
       session,
-      adapter,
+      adapter: routedPlan ? routedPlan.adapter : adapter,
       userInput: prompt,
       systemPrompt,
+      buildSystemPrompt,
       tools,
       gate,
       signal: controller.signal,
+      failover: failoverChain,
       onMessage: persist ? (message) => persistMessage(session.id, message) : undefined,
       onEvent: (event) => {
         const auditEvent = auditEventFromAgentEvent(event, {
@@ -288,6 +329,12 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
               );
             }
             break;
+          case "model_fell_back":
+            fellBackTo.push(event.to);
+            process.stderr.write(
+              `[polyglot] ${event.from} failed (${event.reason}) - continuing on ${event.to}\n`,
+            );
+            break;
         }
       },
     });
@@ -320,6 +367,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
           parse_errors: sessionReliability.parseErrors,
           gave_up: sessionReliability.gaveUp,
         },
+        fell_back_to: fellBackTo,
       })}\n`,
     );
   } else {

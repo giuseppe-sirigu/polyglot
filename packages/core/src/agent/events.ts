@@ -25,4 +25,14 @@ export type AgentEvent =
     }
   | { type: "tool_parse_error"; toolCallId: string; attemptedName: string | null; message: string }
   | { type: "usage"; inputTokens: number; outputTokens: number; cachedInputTokens?: number }
+  // Emitted mid-turn when the active model errors or gives up and a configured failover model
+  // takes over for the rest of the session. `reason` is the trigger; `detail` is the error text
+  // or parse error when there is one.
+  | {
+      type: "model_fell_back";
+      from: string;
+      to: string;
+      reason: "error" | "unreliable_model";
+      detail?: string;
+    }
   | { type: "agent_stop"; reason: "done" | "max_steps" | "unreliable_model" };
