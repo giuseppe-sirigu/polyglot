@@ -113,6 +113,22 @@ describe("loadConfig subAgents", () => {
       loadWithSettings({ ...base, subAgents: true }, null, { POLYGLOT_SUB_AGENTS: "0" }).subAgents,
     ).toBe(false);
   });
+
+  it("subAgentModel is undefined unless set, and project settings win over global", () => {
+    expect(loadWithSettings(base, null).subAgentModel).toBeUndefined();
+    expect(
+      loadWithSettings({ ...base, subAgentModel: "haiku" }, { subAgentModel: "sonnet" })
+        .subAgentModel,
+    ).toBe("sonnet");
+  });
+
+  it("POLYGLOT_SUB_AGENT_MODEL overrides the settings value", () => {
+    expect(
+      loadWithSettings({ ...base, subAgentModel: "haiku" }, null, {
+        POLYGLOT_SUB_AGENT_MODEL: "llama3.2:3b",
+      }).subAgentModel,
+    ).toBe("llama3.2:3b");
+  });
 });
 
 describe("loadConfig pricing", () => {

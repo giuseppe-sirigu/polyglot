@@ -57,6 +57,11 @@ import {
 } from "@usepolyglot/core";
 import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ResolvedModel,
+  configuredModelEntries,
+  resolveConfiguredModel,
+} from "../modelRouting.js";
 import { ApprovalPrompt } from "./ApprovalPrompt.js";
 import { AskUserQuestionPrompt } from "./AskUserQuestionPrompt.js";
 import { AutoUpdateConsentPrompt } from "./AutoUpdateConsentPrompt.js";
@@ -169,20 +174,7 @@ export function App({
   // it here (unless it's already a configured entry) so /model can always switch back to where
   // the session started, even after switching away - otherwise it silently drops out of the
   // list the moment `activeModel` no longer points at it.
-  const modelEntries = useMemo<ModelEntry[]>(() => {
-    const startup: ModelEntry = {
-      provider: resolved.engine.provider,
-      model: resolved.engine.model,
-      label: resolved.engine.model,
-      baseURL: resolved.engine.baseURL,
-      apiKey: resolved.engine.apiKey,
-      structuredOutput: resolved.engine.structuredOutput,
-    };
-    const alreadyListed = resolved.models.some(
-      (m) => m.provider === startup.provider && m.model === startup.model,
-    );
-    return alreadyListed ? resolved.models : [startup, ...resolved.models];
-  }, [resolved.engine, resolved.models]);
+  const modelEntries = useMemo<ModelEntry[]>(() => configuredModelEntries(resolved), [resolved]);
 
   function pushItem(item: NewDisplayItem) {
     const id = String(nextId.current++);
@@ -282,6 +274,44 @@ export function App({
   }
   const gate = gateRef.current;
 
+  // `subAgentModel` (settings) → a ready adapter for `task` sub-agents to run on, or null when
+  // it's unset / points at the active model / doesn't match anything configured. Re-resolved on
+  // a `/model` switch so a `subAgentModel` that names the now-active model tracks it.
+  const subAgent = useMemo<ResolvedModel | null>(
+    () =>
+      resolved.subAgentModel
+        ? resolveConfiguredModel(resolved.subAgentModel, {
+            modelEntries,
+            current: {
+              adapter: activeAdapter,
+              provider: activeModel.provider,
+              model: activeModel.model,
+              label: activeModel.label,
+            },
+            defaults: { structuredOutput: resolved.engine.structuredOutput },
+          })
+        : null,
+    [
+      resolved.subAgentModel,
+      resolved.engine.structuredOutput,
+      modelEntries,
+      activeAdapter,
+      activeModel,
+    ],
+  );
+  const warnedSubAgentRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pushItem is redefined each render but functionally stable (it only calls setItems); the ref guard makes this fire at most once anyway
+  useEffect(() => {
+    if (resolved.subAgentModel && !subAgent && !warnedSubAgentRef.current) {
+      warnedSubAgentRef.current = true;
+      pushItem({
+        kind: "system",
+        tone: "warn",
+        text: `subAgentModel "${resolved.subAgentModel}" isn't a configured model - sub-agents will use the active model.`,
+      });
+    }
+  }, [subAgent, resolved.subAgentModel]);
+
   // Rebuilt whenever the active model changes - this is what keeps the "task" sub-agent tool
   // (which captures `adapter` by closure at construction, in core's buildAgentTools) from
   // silently continuing to spawn sub-agents against a model /model has already switched away
@@ -311,6 +341,23 @@ export function App({
       // that keeps delegating to itself mostly burns turns.
       subAgents: resolved.subAgents ?? activeAdapter.capabilities.nativeToolCalling === "reliable",
       projectInstructions: resolved.projectInstructions.text,
+      ...(subAgent
+        ? {
+            subAgentAdapter: subAgent.adapter,
+            subAgentModel: subAgent.model,
+            onSubAgentUsage: (u) => {
+              const turn = turnUsageFromEvent(u, {
+                provider: subAgent.provider,
+                model: subAgent.model,
+                overrides: resolved.pricing,
+              });
+              session.usage = addTurnUsage(session.usage ?? emptyUsageTotals(), turn);
+              if (resolved.persistTranscripts) {
+                void persistTurnUsage(session.id, turn, { subAgent: true });
+              }
+            },
+          }
+        : {}),
     });
     // Always registered - not gated on the mode the session *started* in - since the user can
     // switch into plan mode later via Shift+Tab, and the model must still be able to call these
@@ -338,7 +385,7 @@ export function App({
       ),
     );
     return built;
-  }, [activeAdapter, activeModel.model, session.cwd, resolved.subAgents]);
+  }, [activeAdapter, activeModel.model, session.cwd, session.id, resolved.subAgents, subAgent]);
 
   const systemPrompt = useMemo(
     () =>

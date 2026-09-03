@@ -16,6 +16,18 @@ export interface BuildAgentToolsOptions {
   /** `AGENTS.md` / `POLYGLOT.md` contents - passed to sub-agents so they follow the same
    * project conventions as the parent. */
   projectInstructions?: string;
+  /** Run `task` sub-agents on a different model than the parent. Both must be set; when unset,
+   * sub-agents use `adapter` / `model`. The recursive `buildSubTools` closure recaptures
+   * `opts`, so this applies at every nesting depth. */
+  subAgentAdapter?: ProviderAdapter;
+  subAgentModel?: string;
+  /** Called with a sub-agent turn's token usage (the caller knows which model produced it -
+   * see App.tsx / headless.ts) so sub-agent cost rolls into the parent session's totals. */
+  onSubAgentUsage?: (u: {
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens?: number;
+  }) => void;
 }
 
 const DEFAULT_MAX_DEPTH = 3;
@@ -35,11 +47,12 @@ export function buildAgentTools(opts: BuildAgentToolsOptions, depth = 0): ToolRe
   if ((opts.subAgents ?? true) && depth < maxDepth) {
     registry.register(
       createTaskTool({
-        adapter: opts.adapter,
+        adapter: opts.subAgentAdapter ?? opts.adapter,
         gate: opts.gate,
-        model: opts.model,
+        model: opts.subAgentModel ?? opts.model,
         cwd: opts.cwd,
         projectInstructions: opts.projectInstructions,
+        onSubAgentUsage: opts.onSubAgentUsage,
         buildSubTools: () => buildAgentTools(opts, depth + 1),
       }),
     );

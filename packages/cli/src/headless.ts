@@ -39,6 +39,7 @@ import {
   writeFileTool,
 } from "@usepolyglot/core";
 import type { CliArgs } from "./args.js";
+import { configuredModelEntries, resolveConfiguredModel } from "./modelRouting.js";
 import { applyCapabilityProbe } from "./probe.js";
 
 function readStdin(): Promise<string> {
@@ -143,6 +144,29 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
         // an allow rule or an unattended mode is denied with a clear reason fed back to the model.
       });
 
+  // Declared here (not with the other turn-locals below) so the sub-agent usage callback wired
+  // into buildAgentTools can fold into the same running totals.
+  let sessionUsage = session.usage ?? emptyUsageTotals();
+  let sessionReliability = session.reliability ?? emptyReliabilityTotals();
+
+  const subAgent = resolved.subAgentModel
+    ? resolveConfiguredModel(resolved.subAgentModel, {
+        modelEntries: configuredModelEntries(resolved),
+        current: {
+          adapter,
+          provider: resolved.engine.provider,
+          model: session.model,
+          label: session.model,
+        },
+        defaults: { structuredOutput: resolved.engine.structuredOutput },
+      })
+    : null;
+  if (resolved.subAgentModel && !subAgent) {
+    process.stderr.write(
+      `[polyglot] subAgentModel "${resolved.subAgentModel}" isn't a configured model - sub-agents will use the active model.\n`,
+    );
+  }
+
   const tools = buildAgentTools({
     baseTools: [
       readFileTool,
@@ -161,6 +185,21 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     cwd: session.cwd,
     subAgents: resolved.subAgents ?? adapter.capabilities.nativeToolCalling === "reliable",
     projectInstructions: resolved.projectInstructions.text,
+    ...(subAgent
+      ? {
+          subAgentAdapter: subAgent.adapter,
+          subAgentModel: subAgent.model,
+          onSubAgentUsage: (u) => {
+            const turn = turnUsageFromEvent(u, {
+              provider: subAgent.provider,
+              model: subAgent.model,
+              overrides: resolved.pricing,
+            });
+            sessionUsage = addTurnUsage(sessionUsage, turn);
+            if (persist) void persistTurnUsage(session.id, turn, { subAgent: true });
+          },
+        }
+      : {}),
   });
   tools.register(
     createAskUserQuestionTool(async () => {
@@ -186,8 +225,6 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   let assistantText = "";
   let stopReason: "done" | "max_steps" | "unreliable_model" = "done";
   let isError = false;
-  let sessionUsage = session.usage ?? emptyUsageTotals();
-  let sessionReliability = session.reliability ?? emptyReliabilityTotals();
 
   try {
     await runAgentTurn({
