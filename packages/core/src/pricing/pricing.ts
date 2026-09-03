@@ -7,9 +7,10 @@ export interface ModelPricing {
   cachedInput?: number;
 }
 
-/** Anthropic prompt-cache reads are billed at ~0.1x the base input rate (cache writes ~1.25x,
- * but polyglot doesn't cache-write yet - see A3). Used as the fallback when a table/override
- * entry omits `cachedInput`. */
+/** Anthropic prompt-cache reads are billed at ~0.1x the base input rate. Used as the fallback
+ * when a table/override entry omits `cachedInput`. Cache *writes* (~1.25x) are folded into
+ * `inputTokens` and billed at the base rate - the 0.25x write premium applies only to the
+ * system block, once per ~5-min cache lifetime, so the rounding error is sub-cent. */
 export const CACHE_READ_MULTIPLIER = 0.1;
 
 /**

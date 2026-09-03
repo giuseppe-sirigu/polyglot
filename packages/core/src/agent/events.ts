@@ -24,5 +24,5 @@ export type AgentEvent =
       reason?: string;
     }
   | { type: "tool_parse_error"; toolCallId: string; attemptedName: string | null; message: string }
-  | { type: "usage"; inputTokens: number; outputTokens: number }
+  | { type: "usage"; inputTokens: number; outputTokens: number; cachedInputTokens?: number }
   | { type: "agent_stop"; reason: "done" | "max_steps" | "unreliable_model" };

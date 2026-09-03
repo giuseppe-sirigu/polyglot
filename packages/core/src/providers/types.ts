@@ -21,7 +21,14 @@ export type ProviderStreamEvent =
   | { type: "text_delta"; delta: string }
   | { type: "thinking_delta"; delta: string }
   | { type: "message_stop"; stopReason: "end_turn" | "max_tokens" | "error" }
-  | { type: "usage"; inputTokens: number; outputTokens: number };
+  // `inputTokens` is the full prompt size (including any cached portion); `cachedInputTokens`
+  // is the subset that was a prompt-cache read, priced at ~0.1x - see pricing/computeCost.
+  | {
+      type: "usage";
+      inputTokens: number;
+      outputTokens: number;
+      cachedInputTokens?: number;
+    };
 
 export interface ProviderCapabilities {
   nativeToolCalling: "reliable" | "unreliable" | "none";
