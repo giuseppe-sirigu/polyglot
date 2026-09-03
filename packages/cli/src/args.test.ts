@@ -93,6 +93,50 @@ describe("parseCliArgs", () => {
     expect(args.prompt).toBe("continue");
   });
 
+  it("keeps a --resume path token verbatim", () => {
+    expect(parseCliArgs(["--resume", "./x.jsonl"]).resumeId).toBe("./x.jsonl");
+    expect(parseCliArgs(["--resume", "/abs/y.jsonl"]).resumeId).toBe("/abs/y.jsonl");
+  });
+
+  describe("share subcommand", () => {
+    it("recognises `share` and `export` only as the first token", () => {
+      expect(parseCliArgs(["share"]).share).toBe(true);
+      expect(parseCliArgs(["export"]).share).toBe(true);
+      expect(parseCliArgs(["-p", "share"]).share).toBe(false);
+    });
+
+    it("parses the target, --out, --format, --no-redact and --full", () => {
+      const args = parseCliArgs([
+        "share",
+        "abc123",
+        "--out",
+        "/tmp/s.html",
+        "--format",
+        "html",
+        "--no-redact",
+        "--full",
+      ]);
+      expect(args).toMatchObject({
+        share: true,
+        shareTarget: "abc123",
+        shareOut: "/tmp/s.html",
+        shareFormat: "html",
+        shareRedact: false,
+        shareFull: true,
+      });
+    });
+
+    it("defaults to md, redacted, summarised", () => {
+      const args = parseCliArgs(["share"]);
+      expect(args).toMatchObject({ shareFormat: "md", shareRedact: true, shareFull: false });
+      expect(args.shareTarget).toBeUndefined();
+    });
+
+    it("rejects a bad --format", () => {
+      expect(() => parseCliArgs(["share", "--format", "pdf"])).toThrow(/--format/);
+    });
+  });
+
   it("parses --help and --version", () => {
     expect(parseCliArgs(["--help"]).help).toBe(true);
     expect(parseCliArgs(["-h"]).help).toBe(true);

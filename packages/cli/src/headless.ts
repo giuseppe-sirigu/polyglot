@@ -26,6 +26,7 @@ import {
   grepTool,
   listSessions,
   loadSession,
+  loadSessionFromPath,
   persistMessage,
   persistSessionHeader,
   persistTurnUsage,
@@ -45,6 +46,16 @@ import {
   resolveConfiguredModel,
 } from "./modelRouting.js";
 import { applyCapabilityProbe } from "./probe.js";
+
+/** Resolves a `--resume` token: a `.jsonl` path loads directly, anything else is a session id
+ * (or, when absent, the most recent session). Shared by main.ts and headless.ts. */
+export async function resolveResumeTarget(token: string | undefined): Promise<Session | null> {
+  if (token && (token.includes("/") || token.endsWith(".jsonl"))) {
+    return loadSessionFromPath(token);
+  }
+  const id = token ?? (await listSessions())[0]?.id;
+  return id ? loadSession(id) : null;
+}
 
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
@@ -92,8 +103,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
 
   let session: Session;
   if (args.resume) {
-    const targetId = args.resumeId ?? (await listSessions())[0]?.id;
-    const existing = targetId ? await loadSession(targetId) : null;
+    const existing = await resolveResumeTarget(args.resumeId);
     if (!existing) {
       process.stderr.write("[polyglot] no session found to resume.\n");
       return 1;

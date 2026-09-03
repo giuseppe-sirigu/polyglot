@@ -20,10 +20,22 @@ export interface CliArgs {
   noPersist: boolean;
   /** --resume was passed. */
   resume: boolean;
-  /** The session id token following --resume, when present. */
+  /** The token following --resume: a session id, or a path to a `.jsonl` session file. */
   resumeId?: string;
   /** --probe: force a fresh capability probe of the endpoint on startup (openai-compatible). */
   probe: boolean;
+  /** `polyglot share`/`export`: write a shareable transcript and exit. */
+  share: boolean;
+  /** Session id or `.jsonl`/path to export; undefined = most recent. */
+  shareTarget?: string;
+  /** Output path for the export (default `./polyglot-session-<date>.<ext>`). */
+  shareOut?: string;
+  /** Export format. */
+  shareFormat: "md" | "html";
+  /** Redact secret-looking values (default true; `--no-redact` turns it off). */
+  shareRedact: boolean;
+  /** Include full tool-call args and result bodies (default one-line summaries). */
+  shareFull: boolean;
 }
 
 export const HELP_TEXT = `polyglot - a model-agnostic coding-agent CLI
@@ -31,6 +43,7 @@ export const HELP_TEXT = `polyglot - a model-agnostic coding-agent CLI
 Usage:
   polyglot [options]                 start the interactive TUI
   polyglot init                      interactive first-run setup (writes ~/.polyglot/settings.json)
+  polyglot share [id|path] [opts]    export a session transcript to a file
   polyglot -p "<prompt>" [options]   run one prompt, print the answer, exit
   echo "<prompt>" | polyglot -p      read the prompt from stdin
 
@@ -40,10 +53,16 @@ Options:
       --allow-all               print-mode: run every tool without prompting
       --permission-mode <mode>  print-mode: "manual", "auto", or "plan"
       --no-persist              write nothing to ~/.polyglot/ (ephemeral session)
-      --resume [session-id]     resume the most recent session, or one by id
+      --resume [id|path]        resume the most recent session, one by id, or a .jsonl file
       --probe                   ping the endpoint to detect its real capabilities
   -v, --version                print the version and exit
   -h, --help                   print this help and exit
+
+share options:
+      --out <path>              output file (default ./polyglot-session-<date>.<ext>)
+      --format <md|html>        output format (default md)
+      --no-redact               do not scrub secret-looking values (default: scrub)
+      --full                    include full tool-call args and result bodies
 
 In print mode the session id is written to stderr (and included in the JSON
 envelope) so it can be chained with --resume.`;
@@ -63,12 +82,34 @@ export function parseCliArgs(argv: string[]): CliArgs {
     noPersist: false,
     resume: false,
     probe: false,
+    share: false,
+    shareFormat: "md",
+    shareRedact: true,
+    shareFull: false,
   };
   const positional: string[] = [];
 
   // `init` is a subcommand, only recognised as the very first token.
   if (argv[0] === "init") {
     args.init = true;
+    return args;
+  }
+
+  // `share` / `export` subcommand: `polyglot share [id|path] [--out F] [--format md|html] [--no-redact] [--full]`
+  if (argv[0] === "share" || argv[0] === "export") {
+    args.share = true;
+    for (let i = 1; i < argv.length; i++) {
+      const arg = argv[i] as string;
+      if (arg === "--out") args.shareOut = argv[++i];
+      else if (arg === "--format") {
+        const v = argv[++i];
+        if (v !== "md" && v !== "html") throw new Error("--format must be md or html");
+        args.shareFormat = v;
+      } else if (arg === "--no-redact") args.shareRedact = false;
+      else if (arg === "--full") args.shareFull = true;
+      else if (arg.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
+      else args.shareTarget = arg;
+    }
     return args;
   }
 

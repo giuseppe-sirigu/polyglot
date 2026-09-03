@@ -111,14 +111,10 @@ export async function persistTurnUsage(
   await appendFile(sessionPath(sessionId), `${JSON.stringify(line)}\n`, "utf8");
 }
 
-export async function loadSession(sessionId: string): Promise<Session | null> {
-  let raw: string;
-  try {
-    raw = await readFile(sessionPath(sessionId), "utf8");
-  } catch {
-    return null;
-  }
-
+/** Parses the JSONL body of a session file into a `Session`. Returns null when there's no
+ * header line. Shared by `loadSession` (by id) and `loadSessionFromPath` (by path, for
+ * `--resume <file>`). */
+export function parseSessionLines(raw: string): Session | null {
   const lines = raw
     .split("\n")
     .filter(Boolean)
@@ -153,6 +149,24 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
     ...(lastContextTokens !== undefined ? { lastContextTokens } : {}),
     ...(usage ? { usage } : {}),
   };
+}
+
+export async function loadSession(sessionId: string): Promise<Session | null> {
+  try {
+    return parseSessionLines(await readFile(sessionPath(sessionId), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** Loads a session from an arbitrary `.jsonl` path (a copied or shared session file) rather
+ * than by id from `~/.polyglot/sessions/`. Used by `--resume <path>`. */
+export async function loadSessionFromPath(path: string): Promise<Session | null> {
+  try {
+    return parseSessionLines(await readFile(path, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 /** Deletes persisted session files whose last-modified time is older than `maxAgeDays`.

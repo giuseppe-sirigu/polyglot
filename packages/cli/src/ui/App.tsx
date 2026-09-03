@@ -1,3 +1,5 @@
+import * as nodeFs from "node:fs/promises";
+import * as nodePath from "node:path";
 import {
   type ApprovalResponse,
   type McpConnectResult,
@@ -48,6 +50,8 @@ import {
   resolveEngineConfigForModel,
   runAgentTurn,
   runSelfUpdate,
+  serializeSessionHtml,
+  serializeSessionMarkdown,
   sessionContextTokens,
   setAutoUpdatePreference,
   shouldCompact,
@@ -746,6 +750,27 @@ export function App({
         tone: "info",
         text: `Compacted session: ~${before} -> ~${after} tokens${note}`,
       });
+      return;
+    }
+
+    if (value === "/share" || value.startsWith("/share ")) {
+      pushItem({ kind: "user", text: value });
+      const parts = value.split(/\s+/).slice(1);
+      const html = parts.includes("--html") || parts.some((p) => p.endsWith(".html"));
+      const full = parts.includes("--full");
+      const pathArg = parts.find((p) => !p.startsWith("--"));
+      const date = new Date().toISOString().slice(0, 10);
+      const out = nodePath.resolve(
+        session.cwd,
+        pathArg ?? `polyglot-session-${date}.${html ? "html" : "md"}`,
+      );
+      const opts = { redact: true, includeToolIO: full };
+      const body = html
+        ? serializeSessionHtml(session, tools, opts)
+        : serializeSessionMarkdown(session, tools, opts);
+      await nodeFs.mkdir(nodePath.dirname(out), { recursive: true });
+      await nodeFs.writeFile(out, body, "utf8");
+      pushItem({ kind: "system", tone: "info", text: `Exported this session to ${out}` });
       return;
     }
 
