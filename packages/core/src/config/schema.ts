@@ -35,6 +35,10 @@ export const SettingsSchema = z.object({
    * native tool-calling (anthropic), off otherwise: a weak model that delegates to itself
    * mostly just burns turns. */
   subAgents: z.boolean().optional(),
+  /** Model id or `/model`-style label for `task` sub-agents to run on. Unset = the same model
+   * as the parent. Points at a `models[]` entry (or the startup model); a cheaper/smaller
+   * model here is an easy cost win for delegated grunt work. */
+  subAgentModel: z.string().optional(),
   /** Per-model price overrides for cost estimates (USD per 1M tokens), keyed by model id.
    * Wins over the built-in Anthropic table for any provider - the way to put a nominal rate
    * on a local model, or to correct a stale built-in. */

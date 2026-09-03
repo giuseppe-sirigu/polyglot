@@ -29,6 +29,8 @@ export interface ResolvedConfig {
   /** See SettingsSchema.subAgents. Unset here means "let the frontend decide from the model's
    * tool-calling reliability". */
   subAgents?: boolean;
+  /** See SettingsSchema.subAgentModel. Unset means "sub-agents run on the parent's model". */
+  subAgentModel?: string;
   /** Per-model price overrides for cost estimates - always resolved (defaults to `{}`). */
   pricing: Record<string, ModelPricing>;
   /** See SettingsSchema.audit - always resolved (defaults: disabled, args hashed). */
@@ -144,6 +146,7 @@ function mergeSettings(base: Settings, override: Settings): Settings {
     structuredOutput: override.structuredOutput ?? base.structuredOutput,
     probeCapabilities: override.probeCapabilities ?? base.probeCapabilities,
     subAgents: override.subAgents ?? base.subAgents,
+    subAgentModel: override.subAgentModel ?? base.subAgentModel,
     pricing: { ...base.pricing, ...override.pricing },
     audit:
       base.audit || override.audit
@@ -240,6 +243,7 @@ function applyEnvOverrides(settings: Settings, env: NodeJS.ProcessEnv): Settings
         : env.POLYGLOT_SUB_AGENTS === "false" || env.POLYGLOT_SUB_AGENTS === "0"
           ? false
           : settings.subAgents,
+    subAgentModel: env.POLYGLOT_SUB_AGENT_MODEL ?? settings.subAgentModel,
     pricing: settings.pricing,
     audit: {
       enabled: auditEnabled,
@@ -292,6 +296,7 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): R
     mcpServers: merged.mcpServers,
     probeCapabilities: merged.probeCapabilities,
     subAgents: merged.subAgents,
+    subAgentModel: merged.subAgentModel,
     pricing: merged.pricing,
     audit: {
       enabled: merged.audit?.enabled ?? false,

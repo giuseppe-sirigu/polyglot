@@ -17,7 +17,22 @@ function freeTextAdapter(responses: string[]): ProviderAdapter {
   };
 }
 
-function taskTool(adapter: ProviderAdapter) {
+/** Yields one clean text reply plus a usage event per turn, cycling through `usages`. */
+function usageAdapter(usages: { inputTokens: number; outputTokens: number }[]): ProviderAdapter {
+  let i = 0;
+  return {
+    id: "fake",
+    capabilities: { nativeToolCalling: "none", maxContextTokens: 100_000, structuredOutput: false },
+    async *chat(): AsyncIterable<ProviderStreamEvent> {
+      const u = usages[i++] ?? { inputTokens: 0, outputTokens: 0 };
+      yield { type: "text_delta", delta: "done." };
+      yield { type: "usage", inputTokens: u.inputTokens, outputTokens: u.outputTokens };
+      yield { type: "message_stop", stopReason: "end_turn" };
+    },
+  };
+}
+
+function taskTool(adapter: ProviderAdapter, extra?: Partial<Parameters<typeof createTaskTool>[0]>) {
   return createTaskTool({
     adapter,
     gate: new AllowAllGate(),
@@ -25,6 +40,7 @@ function taskTool(adapter: ProviderAdapter) {
     cwd: "/tmp",
     buildSubTools: () => new ToolRegistry(),
     maxSteps: 5,
+    ...extra,
   });
 }
 
@@ -58,5 +74,25 @@ describe("task tool result handling", () => {
 
     expect(text).toContain("[report truncated]");
     expect(text.length).toBeLessThan(4200);
+  });
+});
+
+describe("task tool sub-agent usage forwarding", () => {
+  it("forwards the sub-agent turn's token usage to onSubAgentUsage", async () => {
+    const seen: { inputTokens: number; outputTokens: number }[] = [];
+    const adapter = usageAdapter([{ inputTokens: 1200, outputTokens: 90 }]);
+
+    await taskTool(adapter, { onSubAgentUsage: (u) => seen.push(u) }).execute(input, ctx);
+
+    expect(seen).toEqual([{ inputTokens: 1200, outputTokens: 90 }]);
+  });
+
+  it("does not call onSubAgentUsage when the sub-agent reports no usage", async () => {
+    const seen: unknown[] = [];
+    const adapter = freeTextAdapter(["all done"]);
+
+    await taskTool(adapter, { onSubAgentUsage: (u) => seen.push(u) }).execute(input, ctx);
+
+    expect(seen).toHaveLength(0);
   });
 });

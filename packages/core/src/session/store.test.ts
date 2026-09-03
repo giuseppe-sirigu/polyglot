@@ -120,6 +120,26 @@ describe("session usage", () => {
     expect(loaded?.usage?.byModel["claude-haiku-4-5"]?.inputTokens).toBe(200);
   });
 
+  it("folds a sub-agent turn_usage into byModel but not into lastContextTokens", async () => {
+    const session = createSession({ cwd: "/tmp", provider: "anthropic", model: "claude-opus-5" });
+    await persistSessionHeader(session);
+    await persistTurnUsage(
+      session.id,
+      turn({ model: "claude-opus-5", inputTokens: 5000, outputTokens: 200, costUSD: 0.03 }),
+    );
+    // A trailing sub-agent turn on a cheaper model - its prompt size isn't the session's context.
+    await persistTurnUsage(
+      session.id,
+      turn({ model: "claude-haiku-4-5", inputTokens: 300, outputTokens: 50, costUSD: 0.000_5 }),
+      { subAgent: true },
+    );
+
+    const loaded = await loadSession(session.id);
+    expect(loaded?.lastContextTokens).toBe(5000);
+    expect(loaded?.usage?.inputTokens).toBe(5300);
+    expect(loaded?.usage?.byModel["claude-haiku-4-5"]?.inputTokens).toBe(300);
+  });
+
   it("still reads lastContextTokens from a legacy `usage` line (pre-A1 transcript)", async () => {
     const session = createSession({ cwd: "/tmp", provider: "openai-compatible", model: "m" });
     await persistSessionHeader(session);

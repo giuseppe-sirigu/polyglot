@@ -17,6 +17,13 @@ export interface TaskToolConfig {
    * "task" tool if the caller's depth budget allows, or omits it at the depth limit. */
   buildSubTools: () => ToolRegistry;
   maxSteps?: number;
+  /** Forwards each sub-agent turn's token usage to the caller so its cost (on `model`, which
+   * may be a cheaper sub-agent model) rolls into the parent session's totals. */
+  onSubAgentUsage?: (u: {
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens?: number;
+  }) => void;
 }
 
 interface TaskInput {
@@ -78,6 +85,15 @@ export function createTaskTool(config: TaskToolConfig): ToolDefinition<TaskInput
         onEvent: (event) => {
           if (event.type === "text_delta") finalText += event.delta;
           if (event.type === "agent_stop") stopReason = event.reason;
+          if (event.type === "usage" && event.inputTokens > 0) {
+            config.onSubAgentUsage?.({
+              inputTokens: event.inputTokens,
+              outputTokens: event.outputTokens,
+              ...(event.cachedInputTokens !== undefined
+                ? { cachedInputTokens: event.cachedInputTokens }
+                : {}),
+            });
+          }
         },
       });
 

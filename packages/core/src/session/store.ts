@@ -43,6 +43,10 @@ interface SessionUsageLine {
 interface SessionTurnUsageLine extends TurnUsage {
   kind: "turn_usage";
   at: number;
+  /** Set when this turn was a `task` sub-agent's, not the main session's. Folded into
+   * `usage.byModel` like any other turn (sub-agent cost is real), but excluded from the
+   * `lastContextTokens` calculation - a sub-agent's prompt size isn't the session's. */
+  subAgent?: boolean;
 }
 
 type SessionLine =
@@ -93,8 +97,17 @@ export async function persistSessionRename(sessionId: string, name: string): Pro
   await appendFile(sessionPath(sessionId), `${JSON.stringify(line)}\n`, "utf8");
 }
 
-export async function persistTurnUsage(sessionId: string, turn: TurnUsage): Promise<void> {
-  const line: SessionTurnUsageLine = { kind: "turn_usage", ...turn, at: Date.now() };
+export async function persistTurnUsage(
+  sessionId: string,
+  turn: TurnUsage,
+  opts?: { subAgent?: boolean },
+): Promise<void> {
+  const line: SessionTurnUsageLine = {
+    kind: "turn_usage",
+    ...turn,
+    at: Date.now(),
+    ...(opts?.subAgent ? { subAgent: true } : {}),
+  };
   await appendFile(sessionPath(sessionId), `${JSON.stringify(line)}\n`, "utf8");
 }
 
@@ -124,9 +137,11 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
     turnUsages.length > 0
       ? turnUsages.reduce((acc, l) => addTurnUsage(acc, l), emptyUsageTotals())
       : undefined;
-  // Prefer a turn_usage line; fall back to a legacy `usage` line for pre-A1 transcripts.
+  // Prefer a main-session turn_usage line (a trailing sub-agent turn's prompt size isn't the
+  // session's context); fall back to a legacy `usage` line for pre-A1 transcripts.
   const legacyUsages = lines.filter((l): l is SessionUsageLine => l.kind === "usage");
-  const lastContextTokens = turnUsages.at(-1)?.inputTokens ?? legacyUsages.at(-1)?.inputTokens;
+  const lastContextTokens =
+    turnUsages.filter((l) => !l.subAgent).at(-1)?.inputTokens ?? legacyUsages.at(-1)?.inputTokens;
 
   return {
     id: header.id,
