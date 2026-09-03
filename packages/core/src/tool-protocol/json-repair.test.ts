@@ -37,6 +37,19 @@ describe("repairJson - basics", () => {
     expect(ok(repairJson('```json{"path":"a"}```'))).toEqual({ path: "a" });
   });
 
+  it("strips a fence nested inside a wrapper tag", () => {
+    expect(ok(repairJson('<block>\n```json\n{"path": "a.ts"}\n```\n</block>'))).toEqual({
+      path: "a.ts",
+    });
+  });
+
+  it("returns quickly on a whitespace-heavy body with no wrapper (no super-linear backtracking)", () => {
+    const evil = `${" ".repeat(100_000)}\n`.repeat(3);
+    const start = performance.now();
+    expect(repairJson(evil).ok).toBe(false);
+    expect(performance.now() - start).toBeLessThan(200);
+  });
+
   it("merges a body split into several back-to-back objects into one", () => {
     const body =
       '{"path": "a.ts", "old_string": "const x = 1;\\nconst y = 2;"}\n' +

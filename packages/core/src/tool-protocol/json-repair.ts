@@ -12,22 +12,46 @@ import { jsonrepair } from "jsonrepair";
  * or `</tag>` line can't be either. A dropped closing fence (truncated output) still gets its
  * opening line removed.
  */
+// Anchored, non-ambiguous patterns - no `\s*…$` / `[ \t]*…$` scanning that a whitespace-heavy
+// hostile body could make super-linear (js/polynomial-redos).
+const FENCE_LINE_START = /^ {0,3}(?:`{3,}|~{3,})/;
+const OPEN_WRAPPER_TAG = /^<(?:syntax|block|code|json)\b[^>]*>/i;
+const CLOSE_WRAPPER_TAG = /<\/(?:syntax|block|code|json)>$/i;
+
 function stripEnclosingWrapper(text: string): string {
   const original = text.trim();
   let s = original;
   // Peel repeatedly: a fence nested inside a tag, or stacked tags, both show up in the wild.
   for (let i = 0; i < 4; i++) {
     const before = s;
-    s = s
-      .replace(/^(?:`{3,}|~{3,})[^\n]*(?:\n|$)/, "")
-      .replace(/(?:\n|^)[ \t]*(?:`{3,}|~{3,})[ \t]*$/, "")
-      .replace(/^<(?:syntax|block|code|json)\b[^>]*>\s*/i, "")
-      .replace(/\s*<\/(?:syntax|block|code|json)>\s*$/i, "")
-      .trim();
+
+    // A leading and/or trailing markdown fence *line*.
+    const lines = s.split("\n");
+    if (lines.length > 1 && FENCE_LINE_START.test(lines[0] ?? "")) lines.shift();
+    if (lines.length > 1 && FENCE_LINE_START.test(lines.at(-1) ?? "")) lines.pop();
+    s = lines.join("\n").trim();
+
+    // A leading <syntax>/<block>/<code>/<json> tag (its body may be on the same line).
+    const open = s.match(OPEN_WRAPPER_TAG);
+    if (open) s = s.slice(open[0].length).trimStart();
+
+    // A trailing </…> tag (endsWith guards the scan; the match is a fixed literal + $).
+    if (s.endsWith(">")) {
+      const close = s.match(CLOSE_WRAPPER_TAG);
+      if (close?.index !== undefined) s = s.slice(0, close.index).trimEnd();
+    }
+
     if (s === before) break;
   }
-  // A single-line wrapper (```json{...}``` with no newline) would otherwise be eaten whole.
+  // A single-line wrapper (```json{...}``` with no newline) is left for jsonrepair to handle.
   return s.length > 0 ? s : original;
+}
+
+/** Drops a single trailing comma (and the whitespace after it). String ops, not a `/,\s*$/`
+ * regex, to keep it off the js/polynomial-redos radar. */
+function dropTrailingComma(s: string): string {
+  const t = s.trimEnd();
+  return t.endsWith(",") ? t.slice(0, -1) : t;
 }
 
 export type RepairResult =
@@ -119,7 +143,7 @@ function extractTrailingBlobField(text: string): Record<string, unknown> | null 
   let blobKey = "";
   let valueStart = -1;
   for (let m = keyRe.exec(inner); m !== null; m = keyRe.exec(inner)) {
-    const headText = `{${inner.slice(0, m.index).replace(/,\s*$/, "")}}`;
+    const headText = `{${dropTrailingComma(inner.slice(0, m.index))}}`;
     const head = strictObject(headText);
     if (!head) break;
     scalars = head;
@@ -128,7 +152,7 @@ function extractTrailingBlobField(text: string): Record<string, unknown> | null 
   }
   if (!scalars || valueStart < 0) return null;
 
-  let raw = inner.slice(valueStart).replace(/,\s*$/, "").trim();
+  let raw = dropTrailingComma(inner.slice(valueStart)).trim();
   const quote = raw[0];
   if (!(quote === '"' || quote === "'" || quote === "`") || raw.length < 2) return null;
   raw = raw.slice(1);
@@ -171,7 +195,7 @@ function extractLooseKeyValuePairs(text: string): Record<string, unknown> | null
     if (!match) continue;
     matchedAny = true;
     const key = match[1] as string;
-    const rawValue = (match[2] as string).replace(/,\s*$/, "").trim();
+    const rawValue = dropTrailingComma(match[2] as string).trim();
     result[key] = coerceScalar(rawValue);
   }
 

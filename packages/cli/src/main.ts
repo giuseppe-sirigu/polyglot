@@ -3,17 +3,16 @@ import {
   connectAllMcpServers,
   createProviderAdapter,
   createSession,
-  listSessions,
   loadConfig,
-  loadSession,
   persistSessionHeader,
 } from "@usepolyglot/core";
 import { render } from "ink";
 import { createElement } from "react";
 import { HELP_TEXT, parseCliArgs } from "./args.js";
-import { runHeadless } from "./headless.js";
+import { resolveResumeTarget, runHeadless } from "./headless.js";
 import { runInit } from "./init.js";
 import { applyCapabilityProbe } from "./probe.js";
+import { runShare } from "./share.js";
 import { App } from "./ui/App.js";
 
 /** Loads config, and on the "you haven't configured a provider yet" error runs the setup
@@ -49,6 +48,10 @@ async function main() {
     await runInit();
     return;
   }
+  if (cliArgs.share) {
+    process.exitCode = await runShare(cliArgs);
+    return;
+  }
 
   const cwd = process.cwd();
   const resolved = await loadConfigOrSetUp(cwd);
@@ -70,8 +73,7 @@ async function main() {
   let resumed = false;
 
   if (cliArgs.resume) {
-    const targetId = cliArgs.resumeId ?? (await listSessions())[0]?.id;
-    const existing = targetId ? await loadSession(targetId) : null;
+    const existing = await resolveResumeTarget(cliArgs.resumeId);
     if (!existing) {
       console.error("[polyglot] no session found to resume.");
       process.exitCode = 1;

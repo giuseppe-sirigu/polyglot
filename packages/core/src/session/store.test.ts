@@ -1,11 +1,13 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { utimes } from "node:fs/promises";
+import { readFile, utimes, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   listSessions,
   loadSession,
+  loadSessionFromPath,
+  parseSessionLines,
   persistMessage,
   persistSessionHeader,
   persistSessionRename,
@@ -152,6 +154,44 @@ describe("session usage", () => {
     const loaded = await loadSession(session.id);
     expect(loaded?.lastContextTokens).toBe(872);
     expect(loaded?.usage).toBeUndefined();
+  });
+});
+
+describe("parseSessionLines / loadSessionFromPath", () => {
+  it("parseSessionLines matches loadSession for the same bytes", async () => {
+    const session = createSession({ cwd: "/tmp", provider: "anthropic", model: "claude-opus-5" });
+    await persistSessionHeader(session);
+    await persistMessage(session.id, { id: "1", role: "user", content: "hi", createdAt: 1 });
+    await persistTurnUsage(session.id, turn({ inputTokens: 50 }));
+
+    const viaId = await loadSession(session.id);
+    const raw = await readFile(
+      join(homeDir, ".polyglot", "sessions", `${session.id}.jsonl`),
+      "utf8",
+    );
+    expect(parseSessionLines(raw)).toEqual(viaId);
+  });
+
+  it("loadSessionFromPath reads an arbitrary path", async () => {
+    const session = createSession({ cwd: "/x", provider: "openai-compatible", model: "m" });
+    await persistSessionHeader(session);
+    await persistMessage(session.id, { id: "1", role: "user", content: "hey", createdAt: 1 });
+    const src = join(homeDir, ".polyglot", "sessions", `${session.id}.jsonl`);
+    const copy = join(homeDir, "shared-copy.jsonl");
+    await writeFile(copy, await readFile(src, "utf8"));
+
+    const loaded = await loadSessionFromPath(copy);
+    expect(loaded?.id).toBe(session.id);
+    expect(loaded?.messages).toHaveLength(1);
+  });
+
+  it("returns null for a missing file or a headerless one", async () => {
+    expect(await loadSessionFromPath(join(homeDir, "nope.jsonl"))).toBeNull();
+    expect(
+      parseSessionLines(
+        '{"kind":"message","message":{"id":"1","role":"user","content":"x","createdAt":0}}',
+      ),
+    ).toBeNull();
   });
 });
 

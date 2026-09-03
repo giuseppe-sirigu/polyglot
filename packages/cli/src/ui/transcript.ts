@@ -7,23 +7,17 @@ import {
   type ToolRegistry,
   finalize,
   parseStructuredEnvelope,
+  parseToolResultBlocks,
   resolveEnvelope,
 } from "@usepolyglot/core";
 import type { NewDisplayItem } from "./types.js";
 
-// Mirrors agent/loop.ts's formatToolResultBlock() - the exact shape a tool result gets wrapped
-// in before being fed back to the model as a "user"-role message. This is our own internal
-// serialization, never something a real user would type by hand, so matching it structurally is
-// a reliable way to tell "this user message is actually a tool result" from a genuine one.
-const TOOL_RESULT_BLOCK =
-  /<tool_result name="([^"]*)"( status="error")?>\n([\s\S]*?)\n<\/tool_result>/g;
-
-function parseToolResultBlocks(content: string): NewDisplayItem[] {
-  return [...content.matchAll(TOOL_RESULT_BLOCK)].map(([, name, errorAttr, resultText]) => ({
+function toolResultItems(content: string): NewDisplayItem[] {
+  return parseToolResultBlocks(content).map((block) => ({
     kind: "tool_result",
-    name: name ?? "",
-    resultText: resultText ?? "",
-    isError: Boolean(errorAttr),
+    name: block.name,
+    resultText: block.text,
+    isError: block.isError,
   }));
 }
 
@@ -110,7 +104,7 @@ export function reconstructTranscript(messages: Message[], tools: ToolRegistry):
   let pendingCallIds: string[] = [];
   for (const message of messages) {
     if (message.role === "user") {
-      const resultBlocks = parseToolResultBlocks(message.content);
+      const resultBlocks = toolResultItems(message.content);
       if (resultBlocks.length > 0) {
         resultBlocks.forEach((block, i) => {
           if (block.kind === "tool_result") block.toolCallId = pendingCallIds[i];
