@@ -156,6 +156,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     model: session.model,
     cwd: session.cwd,
     subAgents: resolved.subAgents ?? adapter.capabilities.nativeToolCalling === "reliable",
+    projectInstructions: resolved.projectInstructions.text,
   });
   tools.register(
     createAskUserQuestionTool(async () => {
@@ -171,6 +172,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     cwd: session.cwd,
     mode,
     structured: adapter.capabilities.structuredOutput,
+    projectInstructions: resolved.projectInstructions.text,
   });
 
   const controller = new AbortController();

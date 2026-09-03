@@ -21,6 +21,13 @@ export {
   DEFAULT_MAX_CONTEXT_TOKENS,
 } from "./config/loader.js";
 export type { EngineConfig, ResolvedConfig } from "./config/loader.js";
+export {
+  loadProjectInstructions,
+  globalInstructionsPaths,
+  projectInstructionsPaths,
+  EMPTY_INSTRUCTIONS,
+} from "./config/instructions.js";
+export type { ProjectInstructions } from "./config/instructions.js";
 export { SettingsSchema } from "./config/schema.js";
 export type { Settings, McpServerConfig, ModelEntry } from "./config/schema.js";
 export {

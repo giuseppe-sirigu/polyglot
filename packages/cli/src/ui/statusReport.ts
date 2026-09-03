@@ -14,6 +14,8 @@ export interface StatusReportFields {
   retentionDays: number | undefined;
   autoUpdate: boolean | undefined;
   mcpServers: string[];
+  /** `AGENTS.md` / `POLYGLOT.md` sources loaded, or "none". */
+  instructions: string;
   sessionId: string;
   messageCount: number;
   contextUsedPercent: number | undefined;
@@ -70,6 +72,7 @@ export function formatStatusReport(f: StatusReportFields): string {
       f.autoUpdate === undefined ? "not set" : f.autoUpdate ? "on" : "notify only"
     } (checks npm on startup)`,
     `  mcp servers:  ${f.mcpServers.length > 0 ? f.mcpServers.join(", ") : "none"}`,
+    `  instructions: ${f.instructions}`,
     `  cost:         ${f.cost}`,
     `  cwd:          ${f.cwd}`,
     `  session:      ${f.sessionId} · ${f.messageCount} message(s)${

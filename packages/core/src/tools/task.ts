@@ -10,6 +10,9 @@ export interface TaskToolConfig {
   gate: PermissionGate;
   model: string;
   cwd: string;
+  /** `AGENTS.md` / `POLYGLOT.md` contents - a sub-agent editing the same repo follows the
+   * same project conventions as the parent. */
+  projectInstructions?: string;
   /** Builds a fresh tool registry for the sub-agent - recursively includes another
    * "task" tool if the caller's depth budget allows, or omits it at the depth limit. */
   buildSubTools: () => ToolRegistry;
@@ -56,7 +59,10 @@ export function createTaskTool(config: TaskToolConfig): ToolDefinition<TaskInput
       const instructions =
         "Work autonomously, use tools as needed, and end with a concise final report of what you " +
         "found or did - that report is the only thing the orchestrating agent will see.";
-      const systemPrompt = `You are a sub-agent handling: ${input.description}\n${instructions}\n\n${buildToolSystemPrompt(subTools.list(), config.cwd, undefined, { structured: config.adapter.capabilities.structuredOutput })}`;
+      const projectBlock = config.projectInstructions?.trim()
+        ? `\n\n## Project instructions\n\n${config.projectInstructions.trim()}`
+        : "";
+      const systemPrompt = `You are a sub-agent handling: ${input.description}\n${instructions}${projectBlock}\n\n${buildToolSystemPrompt(subTools.list(), config.cwd, undefined, { structured: config.adapter.capabilities.structuredOutput })}`;
 
       let finalText = "";
       let stopReason = "done";

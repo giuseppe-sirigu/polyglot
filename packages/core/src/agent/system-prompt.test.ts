@@ -58,4 +58,29 @@ describe("assembleSystemPrompt", () => {
       `${PERSONA}\n\n`,
     );
   });
+
+  it("splices project instructions between the persona and the tool section", () => {
+    const out = assembleSystemPrompt({
+      tools,
+      cwd: "/repo",
+      mode: "manual",
+      structured: false,
+      projectInstructions: "Match the existing code style.",
+    });
+    expect(out).toContain("## Project instructions\n\nMatch the existing code style.");
+    expect(out.indexOf(PERSONA)).toBeLessThan(out.indexOf("## Project instructions"));
+    expect(out.indexOf("## Project instructions")).toBeLessThan(out.indexOf("## Tools"));
+  });
+
+  it("omits the instructions block when none provided or empty", () => {
+    const none = assembleSystemPrompt({ tools, cwd: "/repo", structured: false });
+    const empty = assembleSystemPrompt({
+      tools,
+      cwd: "/repo",
+      structured: false,
+      projectInstructions: "   ",
+    });
+    expect(none).not.toContain("## Project instructions");
+    expect(empty).not.toContain("## Project instructions");
+  });
 });

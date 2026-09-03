@@ -36,6 +36,7 @@ describe("formatStatusReport", () => {
     retentionDays: undefined,
     autoUpdate: true,
     mcpServers: [],
+    instructions: "none",
     sessionId: "abc",
     messageCount: 4,
     contextUsedPercent: 12,
@@ -73,5 +74,12 @@ describe("formatStatusReport", () => {
     expect(
       formatStatusReport({ ...base, cost: "~$0.0123 estimated · 1,000 in / 200 out (see /cost)" }),
     ).toMatch(/cost:\s+~\$0\.0123 estimated/);
+  });
+
+  it("shows the project-instructions line", () => {
+    expect(formatStatusReport(base)).toMatch(/instructions:\s+none/);
+    expect(formatStatusReport({ ...base, instructions: "AGENTS.md + POLYGLOT.md (2 KB)" })).toMatch(
+      /instructions:\s+AGENTS\.md \+ POLYGLOT\.md \(2 KB\)/,
+    );
   });
 });
