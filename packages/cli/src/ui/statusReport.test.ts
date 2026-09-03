@@ -41,6 +41,7 @@ describe("formatStatusReport", () => {
     messageCount: 4,
     contextUsedPercent: 12,
     cost: "no usage yet",
+    reliability: "no tool calls yet",
     cwd: "/proj",
   };
 
@@ -81,5 +82,11 @@ describe("formatStatusReport", () => {
     expect(formatStatusReport({ ...base, instructions: "AGENTS.md + POLYGLOT.md (2 KB)" })).toMatch(
       /instructions:\s+AGENTS\.md \+ POLYGLOT\.md \(2 KB\)/,
     );
+  });
+
+  it("shows the reliability line verbatim", () => {
+    expect(
+      formatStatusReport({ ...base, reliability: "qwen3-coder · 4/5 clean (80%) · 1 repaired" }),
+    ).toMatch(/reliability:\s+qwen3-coder · 4\/5 clean/);
   });
 });

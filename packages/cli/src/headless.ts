@@ -4,6 +4,9 @@ import {
   PolicyGate,
   type ResolvedConfig,
   type Session,
+  addGiveUp,
+  addParseError,
+  addToolCall,
   addTurnUsage,
   assembleSystemPrompt,
   auditEventFromAgentEvent,
@@ -17,6 +20,7 @@ import {
   createSession,
   createWebSearchTool,
   editFileTool,
+  emptyReliabilityTotals,
   emptyUsageTotals,
   globTool,
   grepTool,
@@ -183,6 +187,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   let stopReason: "done" | "max_steps" | "unreliable_model" = "done";
   let isError = false;
   let sessionUsage = session.usage ?? emptyUsageTotals();
+  let sessionReliability = session.reliability ?? emptyReliabilityTotals();
 
   try {
     await runAgentTurn({
@@ -210,6 +215,11 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
           case "tool_call": {
             const summary = summarizeInput(event.input);
             process.stderr.write(`● ${event.name}(${summary})\n`);
+            sessionReliability = addToolCall(sessionReliability, {
+              model: session.model,
+              repaired: !!event.repaired,
+              nameCorrected: !!event.correctedFromName,
+            });
             break;
           }
           case "tool_result":
@@ -217,6 +227,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
             break;
           case "tool_parse_error":
             process.stderr.write(`  ⎿ tool parse error: ${event.message}\n`);
+            sessionReliability = addParseError(sessionReliability, session.model);
             break;
           case "usage":
             if (event.inputTokens > 0) {
@@ -234,6 +245,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
             if (event.reason === "unreliable_model") {
               stopReason = "unreliable_model";
               isError = true;
+              sessionReliability = addGiveUp(sessionReliability, session.model);
               process.stderr.write(
                 "[polyglot] model isn't reliably producing valid tool calls; stopping. Try a larger model.\n",
               );
@@ -265,6 +277,12 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
         persisted: persist,
         cost_usd: sessionUsage.costUSD,
         tokens: { input: sessionUsage.inputTokens, output: sessionUsage.outputTokens },
+        reliability: {
+          tool_calls: sessionReliability.toolCalls,
+          repaired: sessionReliability.repaired,
+          parse_errors: sessionReliability.parseErrors,
+          gave_up: sessionReliability.gaveUp,
+        },
       })}\n`,
     );
   } else {

@@ -1,3 +1,4 @@
+import type { SessionReliabilityTotals } from "./reliability-accounting.js";
 import type { SessionUsageTotals } from "./usage-accounting.js";
 
 export interface Message {
@@ -22,6 +23,9 @@ export interface Session {
   /** Cumulative token + estimated-cost totals for the session, per model. Undefined until the
    * first turn reports usage; restored by loadSession from the persisted turn_usage lines. */
   usage?: SessionUsageTotals;
+  /** Per-model tool-call reliability tally for the session (memory-only, not persisted).
+   * Undefined until the first tool call or parse error. */
+  reliability?: SessionReliabilityTotals;
 }
 
 export function createSession(params: { cwd: string; provider: string; model: string }): Session {
