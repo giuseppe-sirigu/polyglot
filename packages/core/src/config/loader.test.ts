@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { loadConfig } from "./loader.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { loadConfig, writeGlobalSettings } from "./loader.js";
 
 function writeSettings(dir: string, settings: Record<string, unknown>) {
   mkdirSync(dir, { recursive: true });
@@ -275,5 +275,42 @@ describe("loadConfig data-handling settings", () => {
       { webSearch: { baseURL: "https://searx.project" } },
     ).webSearch;
     expect(merged).toMatchObject({ provider: "searxng", baseURL: "https://searx.project" });
+  });
+});
+
+describe("writeGlobalSettings", () => {
+  let home: string;
+  let realHome: string | undefined;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "polyglot-wgs-home-"));
+    realHome = process.env.HOME;
+    process.env.HOME = home;
+  });
+  afterEach(() => {
+    process.env.HOME = realHome;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  const read = () => JSON.parse(readFileSync(join(home, ".polyglot", "settings.json"), "utf8"));
+
+  it("creates the file and directory when neither exists", () => {
+    writeGlobalSettings({ provider: "anthropic", model: "claude-sonnet-4-5" });
+    expect(read()).toEqual({ provider: "anthropic", model: "claude-sonnet-4-5" });
+  });
+
+  it("shallow-merges, preserving unknown and untouched keys", () => {
+    mkdirSync(join(home, ".polyglot"), { recursive: true });
+    writeFileSync(
+      join(home, ".polyglot", "settings.json"),
+      JSON.stringify({ model: "old", autoUpdate: true, somethingCustom: 42 }),
+    );
+    writeGlobalSettings({ provider: "openai-compatible", model: "qwen3-coder" });
+    expect(read()).toEqual({
+      provider: "openai-compatible",
+      model: "qwen3-coder",
+      autoUpdate: true,
+      somethingCustom: 42,
+    });
   });
 });

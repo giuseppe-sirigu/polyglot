@@ -4,6 +4,8 @@ export type PermissionModeArg = "manual" | "auto" | "plan";
 export interface CliArgs {
   help: boolean;
   version: boolean;
+  /** `polyglot init`: run the interactive setup wizard and exit. */
+  init: boolean;
   /** -p / --print: run one prompt headlessly and exit instead of starting the TUI. */
   print: boolean;
   /** Positional args joined by a space. Undefined in print mode means "read stdin". */
@@ -28,6 +30,7 @@ export const HELP_TEXT = `polyglot - a model-agnostic coding-agent CLI
 
 Usage:
   polyglot [options]                 start the interactive TUI
+  polyglot init                      interactive first-run setup (writes ~/.polyglot/settings.json)
   polyglot -p "<prompt>" [options]   run one prompt, print the answer, exit
   echo "<prompt>" | polyglot -p      read the prompt from stdin
 
@@ -53,6 +56,7 @@ export function parseCliArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     help: false,
     version: false,
+    init: false,
     print: false,
     outputFormat: "text",
     allowAll: false,
@@ -61,6 +65,12 @@ export function parseCliArgs(argv: string[]): CliArgs {
     probe: false,
   };
   const positional: string[] = [];
+
+  // `init` is a subcommand, only recognised as the very first token.
+  if (argv[0] === "init") {
+    args.init = true;
+    return args;
+  }
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;

@@ -110,9 +110,15 @@ export function getAutoUpdatePreference(): boolean | undefined {
  * everything else in it untouched (including keys this schema doesn't know
  * about, in case the user hand-edited the file). */
 export function setAutoUpdatePreference(value: boolean): void {
+  writeGlobalSettings({ autoUpdate: value });
+}
+
+/** Shallow-merges `patch` into `~/.polyglot/settings.json`, creating the file (and its
+ * directory) if needed and leaving every other key - including ones this schema doesn't know
+ * about - untouched. Used by `polyglot init` and `setAutoUpdatePreference`. */
+export function writeGlobalSettings(patch: Record<string, unknown>): void {
   const path = globalSettingsPath();
-  const raw = readRawSettingsFile(path);
-  raw.autoUpdate = value;
+  const raw = { ...readRawSettingsFile(path), ...patch };
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
 }

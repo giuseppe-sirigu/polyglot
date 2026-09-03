@@ -8,11 +8,19 @@ describe("parseCliArgs", () => {
       print: false,
       help: false,
       version: false,
+      init: false,
       resume: false,
       outputFormat: "text",
       allowAll: false,
     });
     expect(args.prompt).toBeUndefined();
+  });
+
+  it("recognises the `init` subcommand only as the first token", () => {
+    expect(parseCliArgs(["init"]).init).toBe(true);
+    // not a subcommand mid-args - falls through to prompt text
+    expect(parseCliArgs(["-p", "init"]).init).toBe(false);
+    expect(parseCliArgs(["-p", "init"]).prompt).toBe("init");
   });
 
   it("parses -p with a quoted prompt", () => {
