@@ -1,5 +1,12 @@
 # @usepolyglot/cli
 
+## 0.6.0
+
+### Minor Changes
+
+- 6224f69: New `polyglot init` command: an interactive first-run wizard that asks for a provider (local model or Anthropic), model, and base URL, and writes `~/.polyglot/settings.json`. Running `polyglot` in an interactive terminal with no config now launches this wizard automatically instead of exiting with "Provider not set". Non-interactive runs (`-p`, CI) keep the plain error.
+- 18074c9: polyglot now reads a project instructions file and prepends it to the system prompt, like `CLAUDE.md` for Claude Code. It looks for, lowest priority first: `~/.polyglot/AGENTS.md`, `~/.polyglot/POLYGLOT.md`, `<project>/AGENTS.md`, `<project>/POLYGLOT.md` — all concatenated, `POLYGLOT.md` winning. `AGENTS.md` is the cross-tool standard, so a repo already set up for opencode / Codex / Cursor works with no extra file. Sub-agents get the same instructions. `/status` shows which files loaded; `POLYGLOT_NO_INSTRUCTIONS=1` skips loading. Files over 16 KB are truncated.
+
 ## 0.5.0
 
 ### Minor Changes
