@@ -136,6 +136,9 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
             type: "usage",
             inputTokens: event.inputTokens,
             outputTokens: event.outputTokens,
+            ...(event.cachedInputTokens !== undefined
+              ? { cachedInputTokens: event.cachedInputTokens }
+              : {}),
           });
           // Providers may emit an interim usage with inputTokens: 0 before the final one - only
           // the real prompt-size count is worth recording as the session's context size.
