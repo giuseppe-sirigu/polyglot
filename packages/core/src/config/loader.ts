@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ModelPricing } from "../pricing/pricing.js";
 import type { WebSearchConfig } from "../tools/web-search.js";
+import { type ProjectInstructions, loadProjectInstructions } from "./instructions.js";
 import {
   EMPTY_SETTINGS,
   type ModelEntry,
@@ -40,6 +41,9 @@ export interface ResolvedConfig {
   retentionDays?: number;
   /** Backend for the `web_search` tool — always resolved (defaults to `duckduckgo`). */
   webSearch: WebSearchConfig;
+  /** `AGENTS.md` / `POLYGLOT.md` contents (project + global), spliced into the system prompt.
+   * Always resolved (empty when no file exists or `POLYGLOT_NO_INSTRUCTIONS` is set). */
+  projectInstructions: ProjectInstructions;
 }
 
 /** Resolves the API key for `provider`: the provider-specific env var wins over an explicit
@@ -296,5 +300,6 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): R
       apiKey: merged.webSearch?.apiKey,
       baseURL: merged.webSearch?.baseURL,
     },
+    projectInstructions: loadProjectInstructions(cwd, env),
   };
 }

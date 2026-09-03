@@ -13,6 +13,9 @@ export interface BuildAgentToolsOptions {
   maxDepth?: number;
   /** Whether to include the `task` sub-agent tool at all. Default true. */
   subAgents?: boolean;
+  /** `AGENTS.md` / `POLYGLOT.md` contents - passed to sub-agents so they follow the same
+   * project conventions as the parent. */
+  projectInstructions?: string;
 }
 
 const DEFAULT_MAX_DEPTH = 3;
@@ -36,6 +39,7 @@ export function buildAgentTools(opts: BuildAgentToolsOptions, depth = 0): ToolRe
         gate: opts.gate,
         model: opts.model,
         cwd: opts.cwd,
+        projectInstructions: opts.projectInstructions,
         buildSubTools: () => buildAgentTools(opts, depth + 1),
       }),
     );

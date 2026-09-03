@@ -301,6 +301,7 @@ export function App({
       // Unset config → on only for models with reliable native tool-calling; a weak model
       // that keeps delegating to itself mostly burns turns.
       subAgents: resolved.subAgents ?? activeAdapter.capabilities.nativeToolCalling === "reliable",
+      projectInstructions: resolved.projectInstructions.text,
     });
     // Always registered - not gated on the mode the session *started* in - since the user can
     // switch into plan mode later via Shift+Tab, and the model must still be able to call these
@@ -337,8 +338,15 @@ export function App({
         cwd: session.cwd,
         mode,
         structured: activeAdapter.capabilities.structuredOutput,
+        projectInstructions: resolved.projectInstructions.text,
       }),
-    [tools, session.cwd, mode, activeAdapter.capabilities.structuredOutput],
+    [
+      tools,
+      session.cwd,
+      mode,
+      activeAdapter.capabilities.structuredOutput,
+      resolved.projectInstructions.text,
+    ],
   );
 
   // One audit sink per session (a fresh file on /reset or /resume). No-op when audit is off.
@@ -589,6 +597,12 @@ export function App({
           retentionDays: resolved.retentionDays,
           autoUpdate: getAutoUpdatePreference(),
           mcpServers: Object.keys(resolved.mcpServers),
+          instructions: resolved.projectInstructions.sources.length
+            ? `${resolved.projectInstructions.sources.join(" + ")} (${Math.max(
+                1,
+                Math.round(resolved.projectInstructions.text.length / 1024),
+              )} KB)`
+            : "none",
           sessionId: session.id,
           messageCount: session.messages.length,
           contextUsedPercent,

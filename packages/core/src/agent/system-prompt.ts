@@ -10,20 +10,26 @@ export const PERSONA =
 const PLAN_ONLY_TOOLS = new Set(["exit_plan_mode", "ask_user_question"]);
 
 /**
- * Assembles the full system prompt for a turn: the persona line plus the tool-call grammar and
- * tool docs. Single source of truth for both the interactive TUI and headless (`-p`) mode -
- * each used to build this inline, so a guardrail added to one prompt path could silently miss
- * the other.
+ * Assembles the full system prompt for a turn: the persona line, the project's own
+ * instructions (`AGENTS.md` / `POLYGLOT.md`, when present), then the tool-call grammar and tool
+ * docs. Single source of truth for both the interactive TUI and headless (`-p`) mode - each
+ * used to build this inline, so a guardrail added to one prompt path could silently miss the
+ * other.
  */
 export function assembleSystemPrompt(opts: {
   tools: ToolDefinition[];
   cwd: string;
   mode?: "manual" | "auto" | "plan";
   structured: boolean;
+  /** `AGENTS.md` / `POLYGLOT.md` contents - see config/instructions.ts. */
+  projectInstructions?: string;
 }): string {
   const promptTools =
     opts.mode === "plan" ? opts.tools : opts.tools.filter((t) => !PLAN_ONLY_TOOLS.has(t.name));
-  return `${PERSONA}\n\n${buildToolSystemPrompt(promptTools, opts.cwd, opts.mode, {
+  const instructions = opts.projectInstructions?.trim()
+    ? `## Project instructions\n\n${opts.projectInstructions.trim()}\n\n`
+    : "";
+  return `${PERSONA}\n\n${instructions}${buildToolSystemPrompt(promptTools, opts.cwd, opts.mode, {
     structured: opts.structured,
   })}`;
 }
