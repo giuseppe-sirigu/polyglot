@@ -18,6 +18,7 @@ export {
   projectSettingsPath,
   getAutoUpdatePreference,
   setAutoUpdatePreference,
+  writeGlobalSettings,
   DEFAULT_MAX_CONTEXT_TOKENS,
 } from "./config/loader.js";
 export type { EngineConfig, ResolvedConfig } from "./config/loader.js";

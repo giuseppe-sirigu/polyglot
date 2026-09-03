@@ -1,4 +1,5 @@
 import {
+  type ResolvedConfig,
   connectAllMcpServers,
   createProviderAdapter,
   createSession,
@@ -11,8 +12,27 @@ import { render } from "ink";
 import { createElement } from "react";
 import { HELP_TEXT, parseCliArgs } from "./args.js";
 import { runHeadless } from "./headless.js";
+import { runInit } from "./init.js";
 import { applyCapabilityProbe } from "./probe.js";
 import { App } from "./ui/App.js";
+
+/** Loads config, and on the "you haven't configured a provider yet" error runs the setup
+ * wizard once (only when there's a terminal to prompt on) and retries. Any other error, or a
+ * non-interactive session, propagates to the top-level handler. */
+async function loadConfigOrSetUp(cwd: string): Promise<ResolvedConfig> {
+  try {
+    return loadConfig(cwd);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const notConfigured = message.includes("not set") || message.includes("must be set");
+    if (notConfigured && process.stdin.isTTY && process.stdout.isTTY) {
+      console.log("No polyglot config found — let's set one up.");
+      await runInit();
+      return loadConfig(cwd);
+    }
+    throw err;
+  }
+}
 
 async function main() {
   const cliArgs = parseCliArgs(process.argv.slice(2));
@@ -25,9 +45,13 @@ async function main() {
     console.log(HELP_TEXT);
     return;
   }
+  if (cliArgs.init) {
+    await runInit();
+    return;
+  }
 
   const cwd = process.cwd();
-  const resolved = loadConfig(cwd);
+  const resolved = await loadConfigOrSetUp(cwd);
   // A launch-time flag can only tighten this, never loosen it.
   if (cliArgs.noPersist) resolved.persistTranscripts = false;
 
