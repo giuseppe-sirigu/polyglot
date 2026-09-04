@@ -1,7 +1,6 @@
-import { runAgentTurn } from "../agent/loop.js";
+import { runSubAgent } from "../agent/sub-agent.js";
 import type { PermissionGate } from "../permissions/gate.js";
 import type { ProviderAdapter } from "../providers/types.js";
-import { createSession } from "../session/types.js";
 import { buildToolSystemPrompt } from "../tool-protocol/grammar.js";
 import { type ToolDefinition, type ToolRegistry, textResult } from "./types.js";
 
@@ -58,11 +57,6 @@ export function createTaskTool(config: TaskToolConfig): ToolDefinition<TaskInput
     },
     async execute(input, ctx) {
       const subTools = config.buildSubTools();
-      const subSession = createSession({
-        cwd: config.cwd,
-        provider: "sub-agent",
-        model: config.model,
-      });
       const instructions =
         "Work autonomously, use tools as needed, and end with a concise final report of what you " +
         "found or did - that report is the only thing the orchestrating agent will see.";
@@ -71,20 +65,17 @@ export function createTaskTool(config: TaskToolConfig): ToolDefinition<TaskInput
         : "";
       const systemPrompt = `You are a sub-agent handling: ${input.description}\n${instructions}${projectBlock}\n\n${buildToolSystemPrompt(subTools.list(), config.cwd, undefined, { structured: config.adapter.capabilities.structuredOutput })}`;
 
-      let finalText = "";
-      let stopReason = "done";
-      await runAgentTurn({
-        session: subSession,
+      const { text: finalText, stopReason } = await runSubAgent({
         adapter: config.adapter,
-        userInput: input.prompt,
-        systemPrompt,
-        tools: subTools,
+        model: config.model,
         gate: config.gate,
-        signal: ctx.signal,
+        cwd: config.cwd,
+        systemPrompt,
+        userInput: input.prompt,
+        tools: subTools,
         maxSteps: config.maxSteps ?? 15,
+        signal: ctx.signal,
         onEvent: (event) => {
-          if (event.type === "text_delta") finalText += event.delta;
-          if (event.type === "agent_stop") stopReason = event.reason;
           if (event.type === "usage" && event.inputTokens > 0) {
             config.onSubAgentUsage?.({
               inputTokens: event.inputTokens,

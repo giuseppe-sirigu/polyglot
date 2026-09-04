@@ -17,6 +17,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     description: "Per-model tool-call reliability (repairs, parse errors) this session",
   },
   { command: "/raw", description: "Show the verbatim model output for each repaired tool call" },
+  { command: "/agents", description: "List the agent definitions (invoke with @<name> <task>)" },
   { command: "/share", description: "Export this session to a Markdown or HTML file" },
   { command: "/model", description: "List or switch between configured models" },
   { command: "/rename", description: "Give this session a name", takesArgument: true },

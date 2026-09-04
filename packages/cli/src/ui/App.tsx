@@ -21,6 +21,7 @@ import {
   auditEventFromAgentEvent,
   bashTool,
   buildAgentTools,
+  buildToolSystemPrompt,
   checkForUpdate,
   compactSession,
   createAskUserQuestionTool,
@@ -52,6 +53,7 @@ import {
   resolveEngineConfigForModel,
   runAgentTurn,
   runSelfUpdate,
+  runSubAgent,
   serializeSessionHtml,
   serializeSessionMarkdown,
   sessionContextTokens,
@@ -63,6 +65,7 @@ import {
 } from "@usepolyglot/core";
 import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { type AgentInvocation, resolveAgentInvocation } from "../agentInvoke.js";
 import {
   type ResolvedModel,
   buildFailoverChain,
@@ -84,6 +87,7 @@ import { StatusBar } from "./StatusBar.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { TranscriptGroupView, groupKey } from "./TranscriptGroupView.js";
 import { TranscriptLine } from "./TranscriptLine.js";
+import type { AtCandidate } from "./atMentions.js";
 import { formatCostLine, formatCostReport } from "./costReport.js";
 import { renderMarkdown } from "./markdown.js";
 import {
@@ -182,6 +186,18 @@ export function App({
   // the session started, even after switching away - otherwise it silently drops out of the
   // list the moment `activeModel` no longer points at it.
   const modelEntries = useMemo<ModelEntry[]>(() => configuredModelEntries(resolved), [resolved]);
+
+  // Non-file `@`-mention candidates (agents, later skills) - config is process-stable.
+  const mentionExtras = useMemo<AtCandidate[]>(
+    () =>
+      resolved.agents.map((a) => ({
+        kind: "agent",
+        value: `@${a.name}`,
+        label: a.name,
+        hint: a.description || undefined,
+      })),
+    [resolved.agents],
+  );
 
   // Candidate list for the `@`-mention file picker - loaded once per cwd, capped, gitignore-aware.
   const [mentionFiles, setMentionFiles] = useState<string[]>([]);
@@ -371,6 +387,165 @@ export function App({
     return { before, after, note: routed ? ` (summarized with ${routed.label})` : "" };
   }
 
+  /** Runs a `.polyglot/agents/<name>.md` agent as a one-shot sub-agent (its pinned prompt,
+   * tool allowlist, and optional model), streaming its output into the transcript. The
+   * request + the agent's answer are recorded in the session so the main model and `--resume`
+   * see the exchange. */
+  async function runAgentInvocation(inv: AgentInvocation, rawMessage: string): Promise<void> {
+    const { agent } = inv;
+    pushItem({ kind: "system", tone: "info", text: `running agent: ${agent.name}` });
+
+    const {
+      text: agentPrompt,
+      attached,
+      skipped,
+    } = inv.rest.includes("@")
+      ? await expandFileMentions(inv.rest, session.cwd)
+      : { text: inv.rest, attached: [], skipped: [] };
+    for (const a of attached) {
+      pushItem({ kind: "system", tone: "info", text: `attached ${a.path} (${a.lines} lines)` });
+    }
+    for (const s of skipped) {
+      pushItem({ kind: "system", tone: "warn", text: `skipped ${s} (secret file - not attached)` });
+    }
+
+    const routed = agent.model ? resolveConfiguredModel(agent.model, routingCtx) : null;
+    if (agent.model && !routed) {
+      pushItem({
+        kind: "system",
+        tone: "warn",
+        text: `agent model "${agent.model}" isn't configured - using ${activeModel.label}`,
+      });
+    }
+    const runAdapter = routed?.adapter ?? activeAdapter;
+    const runModel = routed?.model ?? activeModel.model;
+    const runProvider = routed?.provider ?? activeModel.provider;
+
+    const allowNames =
+      agent.tools ??
+      tools
+        .names()
+        .filter((n) => n !== "task" && n !== "exit_plan_mode" && n !== "ask_user_question");
+    const agentTools = tools.subset(allowNames);
+    const systemPrompt = `You are the "${agent.name}" agent.\n${agent.prompt}\n\n${buildToolSystemPrompt(
+      agentTools.list(),
+      session.cwd,
+      undefined,
+      { structured: runAdapter.capabilities.structuredOutput },
+    )}`;
+
+    setIsRunning(true);
+    cancelStreamFlush();
+    streamingRef.current = "";
+    setStreamingText("");
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const isStale = () => abortControllerRef.current !== controller;
+
+    let finalText = "";
+    try {
+      const result = await runSubAgent({
+        adapter: runAdapter,
+        model: runModel,
+        provider: runProvider,
+        gate,
+        cwd: session.cwd,
+        systemPrompt,
+        userInput: agentPrompt,
+        tools: agentTools,
+        signal: controller.signal,
+        onEvent: (event) => {
+          if (isStale()) return;
+          if (event.type === "text_delta") {
+            streamingRef.current += event.delta;
+            scheduleStreamFlush();
+          }
+          if (event.type === "turn_end" && streamingRef.current) {
+            cancelStreamFlush();
+            flushLiveItems();
+            pushItem({ kind: "assistant", text: streamingRef.current });
+            streamingRef.current = "";
+            setStreamingText("");
+          }
+          if (event.type === "tool_call") {
+            pushLiveItem({
+              kind: "tool_call",
+              toolCallId: event.toolCallId,
+              name: event.name,
+              input: event.input,
+              correctedFromName: event.correctedFromName,
+              ...(event.repaired ? { repaired: true, rawCall: event.rawCall } : {}),
+            });
+          }
+          if (event.type === "tool_result") {
+            pushLiveItem({
+              kind: "tool_result",
+              toolCallId: event.toolCallId,
+              name: event.name,
+              resultText: event.resultText,
+              isError: event.isError,
+            });
+          }
+          if (event.type === "usage" && event.inputTokens > 0) {
+            const turn = turnUsageFromEvent(event, {
+              provider: runProvider as "anthropic" | "openai-compatible",
+              model: runModel,
+              overrides: resolved.pricing,
+            });
+            session.usage = addTurnUsage(session.usage ?? emptyUsageTotals(), turn);
+            if (resolved.persistTranscripts) void persistTurnUsage(session.id, turn);
+          }
+          if (event.type === "agent_stop" && event.reason === "unreliable_model") {
+            pushItem({
+              kind: "system",
+              tone: "warn",
+              text: `agent ${agent.name}'s model stopped producing valid tool calls.`,
+            });
+          }
+        },
+      });
+      finalText = result.text;
+    } catch (err) {
+      if (!isStale()) {
+        pushItem({
+          kind: "system",
+          tone: "error",
+          text: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } finally {
+      if (!isStale()) {
+        abortControllerRef.current = null;
+        cancelStreamFlush();
+        if (streamingRef.current) {
+          flushLiveItems();
+          pushItem({ kind: "assistant", text: streamingRef.current });
+          streamingRef.current = "";
+          setStreamingText("");
+        }
+        flushLiveItems();
+        setIsRunning(false);
+      }
+    }
+
+    // Record the exchange in the session so the main model has context and --resume replays it.
+    if (finalText) {
+      const now = Date.now();
+      session.messages.push(
+        { id: crypto.randomUUID(), role: "user", content: rawMessage, createdAt: now },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `[${agent.name} agent]\n${finalText}`,
+          createdAt: now + 1,
+        },
+      );
+      if (resolved.persistTranscripts) {
+        for (const m of session.messages.slice(-2)) void persistMessage(session.id, m);
+      }
+    }
+  }
+
   // Rebuilt whenever the active model changes - this is what keeps the "task" sub-agent tool
   // (which captures `adapter` by closure at construction, in core's buildAgentTools) from
   // silently continuing to spawn sub-agents against a model /model has already switched away
@@ -400,6 +575,7 @@ export function App({
       // that keeps delegating to itself mostly burns turns.
       subAgents: resolved.subAgents ?? activeAdapter.capabilities.nativeToolCalling === "reliable",
       projectInstructions: resolved.projectInstructions.text,
+      agents: resolved.agents,
       ...(subAgent
         ? {
             subAgentAdapter: subAgent.adapter,
@@ -718,6 +894,10 @@ export function App({
                 Math.round(resolved.projectInstructions.text.length / 1024),
               )} KB)`
             : "none",
+          agents:
+            resolved.agents.length > 0
+              ? resolved.agents.map((a) => `@${a.name}`).join(", ")
+              : "none",
           sessionId: session.id,
           messageCount: session.messages.length,
           contextUsedPercent,
@@ -756,6 +936,26 @@ export function App({
           it.kind === "tool_call" && !!it.repaired,
       );
       pushItem({ kind: "system", tone: "info", text: formatRepairReport(repairs) });
+      return;
+    }
+
+    if (value === "/agents") {
+      pushItem({ kind: "user", text: value });
+      pushItem({
+        kind: "system",
+        tone: "info",
+        text:
+          resolved.agents.length === 0
+            ? "No agent definitions. Add one at .polyglot/agents/<name>.md, then invoke it with @<name> <task>."
+            : `Agent definitions (@<name> <task> to run):\n${resolved.agents
+                .map(
+                  (a) =>
+                    `  @${a.name} — ${a.description || "(no description)"}${
+                      a.model ? ` · ${a.model}` : ""
+                    }${a.tools ? ` · tools: ${a.tools.join(", ")}` : ""}  [${a.source}]`,
+                )
+                .join("\n")}`,
+      });
       return;
     }
 
@@ -852,6 +1052,13 @@ export function App({
         return;
       }
       switchToModel(match);
+      return;
+    }
+
+    const agentInvoke = resolveAgentInvocation(value, resolved.agents);
+    if (agentInvoke) {
+      pushItem({ kind: "user", text: value });
+      await runAgentInvocation(agentInvoke, value);
       return;
     }
 
@@ -1375,6 +1582,7 @@ export function App({
             disabled={isRunning}
             queuedCount={messageQueue.length}
             mentionFiles={mentionFiles}
+            mentionExtras={mentionExtras}
           />
         )}
 

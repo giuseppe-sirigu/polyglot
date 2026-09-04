@@ -12,6 +12,7 @@ import {
   auditEventFromAgentEvent,
   bashTool,
   buildAgentTools,
+  buildToolSystemPrompt,
   connectAllMcpServers,
   createAskUserQuestionTool,
   createAuditSink,
@@ -40,6 +41,7 @@ import {
   webFetchTool,
   writeFileTool,
 } from "@usepolyglot/core";
+import { resolveAgentInvocation } from "./agentInvoke.js";
 import type { CliArgs } from "./args.js";
 import {
   buildFailoverChain,
@@ -200,6 +202,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     cwd: session.cwd,
     subAgents: resolved.subAgents ?? adapter.capabilities.nativeToolCalling === "reliable",
     projectInstructions: resolved.projectInstructions.text,
+    agents: resolved.agents,
     ...(subAgent
       ? {
           subAgentAdapter: subAgent.adapter,
@@ -263,9 +266,42 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   );
   for (const w of failoverWarnings) process.stderr.write(`[polyglot] ${w}\n`);
 
-  const systemPrompt = buildSystemPrompt({
+  // A prompt beginning `@<agent> <task>` runs that agent definition as the turn: its pinned
+  // system prompt, tool allowlist, and model.
+  const agentInvoke = resolveAgentInvocation(prompt, resolved.agents);
+  let turnTools = tools;
+  let turnSystemPrompt = buildSystemPrompt({
     structured: (routedPlan ? routedPlan.adapter : adapter).capabilities.structuredOutput,
   });
+  let turnAdapter = routedPlan ? routedPlan.adapter : adapter;
+
+  if (agentInvoke) {
+    const { agent } = agentInvoke;
+    const routed = agent.model ? resolveConfiguredModel(agent.model, routingCtx) : null;
+    if (agent.model && !routed) {
+      process.stderr.write(
+        `[polyglot] agent model "${agent.model}" isn't configured - using ${session.model}\n`,
+      );
+    }
+    turnAdapter = routed?.adapter ?? turnAdapter;
+    if (routed) {
+      session.model = routed.model;
+      session.provider = routed.provider;
+    }
+    const allow =
+      agent.tools ??
+      turnTools
+        .names()
+        .filter((n) => n !== "task" && n !== "exit_plan_mode" && n !== "ask_user_question");
+    turnTools = turnTools.subset(allow);
+    turnSystemPrompt = `You are the "${agent.name}" agent.\n${agent.prompt}\n\n${buildToolSystemPrompt(
+      turnTools.list(),
+      cwd,
+      undefined,
+      { structured: turnAdapter.capabilities.structuredOutput },
+    )}`;
+    process.stderr.write(`[polyglot] running agent: ${agent.name}\n`);
+  }
 
   const controller = new AbortController();
   const onSigint = () => controller.abort();
@@ -276,14 +312,15 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   let isError = false;
   const fellBackTo: string[] = [];
 
-  // `@file` mentions in the prompt are inlined the same way the interactive frontend does it.
+  // `@file` mentions are inlined the same way the interactive frontend does it.
+  const source = agentInvoke ? agentInvoke.rest : prompt;
   const {
     text: turnInput,
     attached,
     skipped,
-  } = prompt.includes("@")
-    ? await expandFileMentions(prompt, cwd)
-    : { text: prompt, attached: [], skipped: [] };
+  } = source.includes("@")
+    ? await expandFileMentions(source, cwd)
+    : { text: source, attached: [], skipped: [] };
   for (const a of attached) {
     process.stderr.write(`[polyglot] attached ${a.path} (${a.lines} lines)\n`);
   }
@@ -294,14 +331,14 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   try {
     await runAgentTurn({
       session,
-      adapter: routedPlan ? routedPlan.adapter : adapter,
+      adapter: turnAdapter,
       userInput: turnInput,
-      systemPrompt,
+      systemPrompt: turnSystemPrompt,
       buildSystemPrompt,
-      tools,
+      tools: turnTools,
       gate,
       signal: controller.signal,
-      failover: failoverChain,
+      failover: agentInvoke ? [] : failoverChain,
       onMessage: persist ? (message) => persistMessage(session.id, message) : undefined,
       onEvent: (event) => {
         const auditEvent = auditEventFromAgentEvent(event, {

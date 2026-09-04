@@ -1,5 +1,7 @@
+import type { AgentDefinition } from "../config/agents.js";
 import type { PermissionGate } from "../permissions/gate.js";
 import type { ProviderAdapter } from "../providers/types.js";
+import { createAgentTool } from "./agent-tool.js";
 import { createTaskTool } from "./task.js";
 import { type ToolDefinition, ToolRegistry } from "./types.js";
 
@@ -9,6 +11,11 @@ export interface BuildAgentToolsOptions {
   gate: PermissionGate;
   model: string;
   cwd: string;
+  /** Agent definitions to expose as `agent_<name>` delegation tools the model can call.
+   * Only registered at the top level - a sub-agent never gets them, so no nested delegation.
+   * Their pinned `model` is not honoured here (delegate runs on the sub-agent / active model);
+   * the first-token `@name` invoke path does honour it. */
+  agents?: AgentDefinition[];
   /** Hard cap on sub-agent nesting (task calling task calling task...). */
   maxDepth?: number;
   /** Whether to include the `task` sub-agent tool at all. Default true. */
@@ -42,6 +49,20 @@ const DEFAULT_MAX_DEPTH = 3;
 export function buildAgentTools(opts: BuildAgentToolsOptions, depth = 0): ToolRegistry {
   const registry = new ToolRegistry();
   for (const tool of opts.baseTools) registry.register(tool);
+
+  if (depth === 0 && opts.agents) {
+    for (const agent of opts.agents) {
+      registry.register(
+        createAgentTool(agent, {
+          adapter: opts.subAgentAdapter ?? opts.adapter,
+          model: opts.subAgentModel ?? opts.model,
+          gate: opts.gate,
+          cwd: opts.cwd,
+          baseTools: opts.baseTools,
+        }),
+      );
+    }
+  }
 
   const maxDepth = opts.maxDepth ?? DEFAULT_MAX_DEPTH;
   if ((opts.subAgents ?? true) && depth < maxDepth) {
