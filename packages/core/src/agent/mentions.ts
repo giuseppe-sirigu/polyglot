@@ -1,4 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import { matchesSecretPath } from "../permissions/secret-paths.js";
 
@@ -23,12 +24,41 @@ function insideCwd(resolved: string, cwd: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !rel.startsWith("/"));
 }
 
+/** Opens, checks, and reads a mention target through a single file handle - no check-then-use
+ * gap, and `O_NOFOLLOW` refuses a symlink on the final component (so a swapped-in link to a
+ * secret can't be read). Returns null for anything that isn't a plain readable file. */
+async function readMentionFile(
+  path: string,
+): Promise<{ content: string; truncated: boolean } | null> {
+  let handle: Awaited<ReturnType<typeof open>>;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch {
+    return null;
+  }
+  try {
+    const st = await handle.stat();
+    if (!st.isFile()) return null;
+    const buf = Buffer.alloc(Math.min(st.size, MAX_MENTION_BYTES + 1));
+    if (buf.length > 0) await handle.read(buf, 0, buf.length, 0);
+    const truncated = st.size > MAX_MENTION_BYTES;
+    const content = truncated
+      ? `${buf.subarray(0, MAX_MENTION_BYTES).toString("utf8")}\n\n[... truncated]`
+      : buf.toString("utf8");
+    return { content, truncated };
+  } catch {
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
 /**
  * Replaces `@<relative-path>` tokens in a message with the file's contents, wrapped in a
  * `<file path="...">` block, so the model gets the file without a `read_file` round-trip. A
  * token that doesn't resolve to a readable file inside `cwd` is left untouched (it's just
- * text). A token that resolves to a secret file (`.env`, keys, `.ssh/…`) is never inlined -
- * it's reported in `skipped` instead.
+ * text). A token that resolves to a secret file (`.env`, keys, `.ssh/…`), or a symlink, is
+ * never inlined - a secret is reported in `skipped` instead.
  */
 export async function expandFileMentions(text: string, cwd: string): Promise<ExpandedMentions> {
   const attached: { path: string; lines: number }[] = [];
@@ -43,21 +73,14 @@ export async function expandFileMentions(text: string, cwd: string): Promise<Exp
 
     let expansion: string | null = null;
     if (token && insideCwd(resolved, cwd)) {
-      try {
-        if ((await stat(resolved)).isFile()) {
-          if (matchesSecretPath(resolved)) {
-            skipped.push(token);
-          } else {
-            let content = await readFile(resolved, "utf8");
-            if (Buffer.byteLength(content, "utf8") > MAX_MENTION_BYTES) {
-              content = `${content.slice(0, MAX_MENTION_BYTES)}\n\n[... truncated]`;
-            }
-            attached.push({ path: token, lines: content.split("\n").length });
-            expansion = `${lead}\n<file path="${token}">\n${content}\n</file>\n`;
-          }
+      if (matchesSecretPath(resolved)) {
+        skipped.push(token);
+      } else {
+        const file = await readMentionFile(resolved);
+        if (file) {
+          attached.push({ path: token, lines: file.content.split("\n").length });
+          expansion = `${lead}\n<file path="${token}">\n${file.content}\n</file>\n`;
         }
-      } catch {
-        // not a real file - leave the token as text
       }
     }
 

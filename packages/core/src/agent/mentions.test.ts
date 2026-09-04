@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -72,5 +72,14 @@ describe("expandFileMentions", () => {
     const r = await expandFileMentions("@../outside.txt", dir);
     expect(r.text).toBe("@../outside.txt");
     expect(r.attached).toEqual([]);
+  });
+
+  it("does not follow a symlink on the final component", async () => {
+    write("real-secret.txt", "TOP SECRET");
+    symlinkSync(join(dir, "real-secret.txt"), join(dir, "link.txt"));
+    const r = await expandFileMentions("@link.txt", dir);
+    expect(r.text).toBe("@link.txt");
+    expect(r.attached).toEqual([]);
+    expect(r.text).not.toContain("SECRET");
   });
 });
