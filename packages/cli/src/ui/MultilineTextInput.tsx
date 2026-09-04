@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import { Box, Text, useInput, useStdin } from "ink";
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { type AtCandidate, findMentionQuery } from "./atMentions.js";
 import type { SlashCommand } from "./slashCommands.js";
 
 export interface MultilineTextInputProps {
@@ -16,6 +17,15 @@ export interface MultilineTextInputProps {
   suggestions?: SlashCommand[];
   highlightedSuggestionIndex?: number;
   onNavigateSuggestions?: (direction: -1 | 1) => void;
+  /** `@`-mention picker, same protocol as `suggestions` but the accepted candidate is spliced
+   * in place of the `@query` token (not appended). InputBar ranks these from the live query it
+   * gets via `onMentionQuery`. */
+  mentionCandidates?: AtCandidate[];
+  highlightedMentionIndex?: number;
+  onNavigateMentions?: (direction: -1 | 1) => void;
+  /** Called on every edit / cursor move with the `@`-token under the cursor, or null. */
+  onMentionQuery?: (query: { query: string; start: number } | null) => void;
+  onCloseMentions?: () => void;
 }
 
 // Escape sequences a terminal sends for the literal Home/End keys, taken from Ink's own
@@ -72,6 +82,11 @@ export function MultilineTextInput({
   suggestions = [],
   highlightedSuggestionIndex = 0,
   onNavigateSuggestions,
+  mentionCandidates = [],
+  highlightedMentionIndex = 0,
+  onNavigateMentions,
+  onMentionQuery,
+  onCloseMentions,
 }: MultilineTextInputProps) {
   // Mutated synchronously (not via setState) so a burst of keypresses delivered within a
   // single React batch - e.g. several escape sequences arriving in one stdin chunk - each see
@@ -85,9 +100,10 @@ export function MultilineTextInput({
       const changed = nextText !== stateRef.current.text;
       stateRef.current = { text: nextText, cursor: nextCursor };
       if (changed) onChange(nextText);
+      onMentionQuery?.(findMentionQuery(nextText, nextCursor));
       bump();
     },
-    [onChange],
+    [onChange, onMentionQuery],
   );
 
   useInput((input, key) => {
@@ -125,6 +141,36 @@ export function MultilineTextInput({
           }
           return;
         }
+      }
+    }
+
+    if (mentionCandidates.length > 0) {
+      if (key.upArrow) {
+        onNavigateMentions?.(-1);
+        return;
+      }
+      if (key.downArrow) {
+        onNavigateMentions?.(1);
+        return;
+      }
+      // Esc arrives here as `input === ""` (Ink lists it as a non-alphanumeric key), so it
+      // would otherwise fall through to the catch-all no-op - close the menu instead.
+      if (key.escape) {
+        onCloseMentions?.();
+        return;
+      }
+      if ((key.tab && !key.shift) || key.return) {
+        const chosen = mentionCandidates[highlightedMentionIndex];
+        const q = findMentionQuery(text, cursor);
+        if (chosen && q) {
+          // Splice in place of the `@query` token (unlike a slash accept, which replaces the
+          // whole buffer).
+          apply(
+            `${text.slice(0, q.start) + chosen.value} ${text.slice(cursor)}`,
+            q.start + chosen.value.length + 1,
+          );
+        }
+        return;
       }
     }
 

@@ -32,11 +32,13 @@ import {
   editFileTool,
   emptyReliabilityTotals,
   emptyUsageTotals,
+  expandFileMentions,
   findModelOption,
   getAutoUpdatePreference,
   globTool,
   grepTool,
   listModelOptions,
+  listProjectFiles,
   listSessions,
   loadSession,
   persistMessage,
@@ -180,6 +182,21 @@ export function App({
   // the session started, even after switching away - otherwise it silently drops out of the
   // list the moment `activeModel` no longer points at it.
   const modelEntries = useMemo<ModelEntry[]>(() => configuredModelEntries(resolved), [resolved]);
+
+  // Candidate list for the `@`-mention file picker - loaded once per cwd, capped, gitignore-aware.
+  const [mentionFiles, setMentionFiles] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    listProjectFiles(session.cwd).then(
+      (files) => {
+        if (live) setMentionFiles(files);
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [session.cwd]);
 
   function pushItem(item: NewDisplayItem) {
     const id = String(nextId.current++);
@@ -847,7 +864,24 @@ export function App({
       });
     }
 
+    // `@file` mentions are expanded to the file's contents (in a <file> block) just before the
+    // turn runs - so a queued message reflects the file at run time, and the model gets it
+    // without a read_file round-trip. Secret files are never inlined.
+    const {
+      text: turnInput,
+      attached,
+      skipped,
+    } = value.includes("@")
+      ? await expandFileMentions(value, session.cwd)
+      : { text: value, attached: [], skipped: [] };
+
     pushItem({ kind: "user", text: value });
+    for (const a of attached) {
+      pushItem({ kind: "system", tone: "info", text: `attached ${a.path} (${a.lines} lines)` });
+    }
+    for (const s of skipped) {
+      pushItem({ kind: "system", tone: "warn", text: `skipped ${s} (secret file - not attached)` });
+    }
     setIsRunning(true);
     cancelStreamFlush();
     streamingRef.current = "";
@@ -882,7 +916,7 @@ export function App({
       await runAgentTurn({
         session,
         adapter: routedPlan ? routedPlan.adapter : activeAdapter,
-        userInput: value,
+        userInput: turnInput,
         systemPrompt,
         buildSystemPrompt: ({ structured }) =>
           assembleSystemPrompt({
@@ -1340,6 +1374,7 @@ export function App({
             onSubmit={handleSubmit}
             disabled={isRunning}
             queuedCount={messageQueue.length}
+            mentionFiles={mentionFiles}
           />
         )}
 

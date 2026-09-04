@@ -22,6 +22,7 @@ import {
   editFileTool,
   emptyReliabilityTotals,
   emptyUsageTotals,
+  expandFileMentions,
   globTool,
   grepTool,
   listSessions,
@@ -275,11 +276,26 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   let isError = false;
   const fellBackTo: string[] = [];
 
+  // `@file` mentions in the prompt are inlined the same way the interactive frontend does it.
+  const {
+    text: turnInput,
+    attached,
+    skipped,
+  } = prompt.includes("@")
+    ? await expandFileMentions(prompt, cwd)
+    : { text: prompt, attached: [], skipped: [] };
+  for (const a of attached) {
+    process.stderr.write(`[polyglot] attached ${a.path} (${a.lines} lines)\n`);
+  }
+  for (const s of skipped) {
+    process.stderr.write(`[polyglot] skipped ${s} (secret file - not attached)\n`);
+  }
+
   try {
     await runAgentTurn({
       session,
       adapter: routedPlan ? routedPlan.adapter : adapter,
-      userInput: prompt,
+      userInput: turnInput,
       systemPrompt,
       buildSystemPrompt,
       tools,
