@@ -52,6 +52,39 @@ describe("buildAgentTools subAgents gate", () => {
   });
 });
 
+describe("buildAgentTools agent delegation tools", () => {
+  const reviewer = {
+    name: "reviewer",
+    description: "reviews code",
+    tools: ["read_file"],
+    prompt: "You review code.",
+    source: "reviewer.md",
+  };
+
+  it("registers an agent_<name> tool per agent definition, top level only", () => {
+    const top = buildAgentTools({ ...opts, agents: [reviewer] });
+    expect(top.names()).toContain("agent_reviewer");
+    const nested = buildAgentTools({ ...opts, agents: [reviewer] }, 1);
+    expect(nested.names()).not.toContain("agent_reviewer");
+  });
+
+  it("runs the delegated agent on the sub-agent model when set", async () => {
+    const parent = spyAdapter();
+    const sub = spyAdapter();
+    const tools = buildAgentTools({
+      ...opts,
+      adapter: parent,
+      model: "parent",
+      subAgentAdapter: sub,
+      subAgentModel: "cheap",
+      agents: [reviewer],
+    });
+    await tools.get("agent_reviewer")?.execute({ prompt: "check src/" }, taskCtx);
+    expect(parent.models).toEqual([]);
+    expect(sub.models).toEqual(["cheap"]);
+  });
+});
+
 describe("buildAgentTools sub-agent model override", () => {
   it("runs the sub-agent on the parent model when subAgentModel is unset", async () => {
     const spy = spyAdapter();

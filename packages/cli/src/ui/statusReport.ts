@@ -16,6 +16,8 @@ export interface StatusReportFields {
   mcpServers: string[];
   /** `AGENTS.md` / `POLYGLOT.md` sources loaded, or "none". */
   instructions: string;
+  /** Agent-definition names loaded, or "none". */
+  agents: string;
   sessionId: string;
   messageCount: number;
   contextUsedPercent: number | undefined;
@@ -75,6 +77,7 @@ export function formatStatusReport(f: StatusReportFields): string {
     } (checks npm on startup)`,
     `  mcp servers:  ${f.mcpServers.length > 0 ? f.mcpServers.join(", ") : "none"}`,
     `  instructions: ${f.instructions}`,
+    `  agents:       ${f.agents}`,
     `  cost:         ${f.cost}`,
     `  reliability:  ${f.reliability}`,
     `  cwd:          ${f.cwd}`,

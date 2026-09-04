@@ -2,9 +2,13 @@ export const CORE_VERSION = "0.1.0";
 
 export { runAgentTurn } from "./agent/loop.js";
 export type { FailoverModel, RunAgentTurnOptions } from "./agent/loop.js";
+export { runSubAgent } from "./agent/sub-agent.js";
+export type { RunSubAgentOptions, SubAgentResult } from "./agent/sub-agent.js";
 export { expandFileMentions } from "./agent/mentions.js";
 export type { ExpandedMentions } from "./agent/mentions.js";
 export { listProjectFiles } from "./config/project-files.js";
+export { loadAgentDefinitions } from "./config/agents.js";
+export type { AgentDefinition } from "./config/agents.js";
 export { executeToolCall } from "./agent/executor.js";
 export type { AgentEvent } from "./agent/events.js";
 export { PERSONA, assembleSystemPrompt } from "./agent/system-prompt.js";
@@ -151,6 +155,8 @@ export { createExitPlanModeTool } from "./tools/exit-plan-mode.js";
 export { createAskUserQuestionTool } from "./tools/ask-user-question.js";
 export type { UserQuestionRequest, UserQuestionOption } from "./tools/ask-user-question.js";
 export { createTaskTool } from "./tools/task.js";
+export { createAgentTool } from "./tools/agent-tool.js";
+export type { AgentToolConfig } from "./tools/agent-tool.js";
 export { buildAgentTools } from "./tools/build-agent-tools.js";
 export { ToolRegistry, textResult } from "./tools/types.js";
 export type {

@@ -37,6 +37,7 @@ describe("formatStatusReport", () => {
     autoUpdate: true,
     mcpServers: [],
     instructions: "none",
+    agents: "none",
     sessionId: "abc",
     messageCount: 4,
     contextUsedPercent: 12,
@@ -79,6 +80,9 @@ describe("formatStatusReport", () => {
 
   it("shows the project-instructions line", () => {
     expect(formatStatusReport(base)).toMatch(/instructions:\s+none/);
+    expect(formatStatusReport({ ...base, agents: "@reviewer, @tester" })).toMatch(
+      /agents:\s+@reviewer, @tester/,
+    );
     expect(formatStatusReport({ ...base, instructions: "AGENTS.md + POLYGLOT.md (2 KB)" })).toMatch(
       /instructions:\s+AGENTS\.md \+ POLYGLOT\.md \(2 KB\)/,
     );

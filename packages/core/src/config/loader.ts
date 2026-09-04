@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ModelPricing } from "../pricing/pricing.js";
 import type { WebSearchConfig } from "../tools/web-search.js";
+import { type AgentDefinition, loadAgentDefinitions } from "./agents.js";
 import { type ProjectInstructions, loadProjectInstructions } from "./instructions.js";
 import {
   EMPTY_SETTINGS,
@@ -46,6 +47,9 @@ export interface ResolvedConfig {
   /** `AGENTS.md` / `POLYGLOT.md` contents (project + global), spliced into the system prompt.
    * Always resolved (empty when no file exists or `POLYGLOT_NO_INSTRUCTIONS` is set). */
   projectInstructions: ProjectInstructions;
+  /** Agent definitions from `~/.polyglot/agents/` + `<cwd>/.polyglot/agents/` - invoked via
+   * `@<name>`. Always resolved (`[]` when none or `POLYGLOT_NO_AGENTS` is set). */
+  agents: AgentDefinition[];
   /** Model routing - see SettingsSchema.routing. Always resolved (`failover` defaults to `[]`).
    * Entries are model ids/labels the frontend resolves against `models[]`. */
   routing: { failover: string[]; summaryModel?: string; planModel?: string };
@@ -341,5 +345,6 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): R
       planModel: merged.routing?.planModel,
     },
     projectInstructions: loadProjectInstructions(cwd, env),
+    agents: loadAgentDefinitions(cwd, env),
   };
 }

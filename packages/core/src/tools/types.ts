@@ -59,4 +59,15 @@ export class ToolRegistry {
   names(): string[] {
     return [...this.tools.keys()];
   }
+
+  /** A fresh registry containing only the named tools that exist here (unknown names are
+   * silently dropped). For an agent definition's tool allowlist. */
+  subset(names: string[]): ToolRegistry {
+    const out = new ToolRegistry();
+    for (const name of names) {
+      const tool = this.tools.get(name);
+      if (tool) out.register(tool);
+    }
+    return out;
+  }
 }
