@@ -83,4 +83,42 @@ describe("assembleSystemPrompt", () => {
     expect(none).not.toContain("## Project instructions");
     expect(empty).not.toContain("## Project instructions");
   });
+
+  it("splices the active skill after the project instructions and before the tools", () => {
+    const out = assembleSystemPrompt({
+      tools,
+      cwd: "/repo",
+      mode: "manual",
+      structured: false,
+      projectInstructions: "Match the existing code style.",
+      skill: { name: "haiku", body: "Reply only in haiku." },
+    });
+    expect(out).toContain("## Active skill: haiku\n\nReply only in haiku.");
+    expect(out.indexOf("## Project instructions")).toBeLessThan(out.indexOf("## Active skill"));
+    expect(out.indexOf("## Active skill")).toBeLessThan(out.indexOf("## Tools"));
+  });
+
+  it("includes the skill block with no project instructions present", () => {
+    const out = assembleSystemPrompt({
+      tools,
+      cwd: "/repo",
+      structured: false,
+      skill: { name: "haiku", body: "Reply only in haiku." },
+    });
+    expect(out).toContain("## Active skill: haiku");
+    expect(out).not.toContain("## Project instructions");
+    expect(out.indexOf(PERSONA)).toBeLessThan(out.indexOf("## Active skill"));
+  });
+
+  it("omits the skill block when unset or empty-bodied", () => {
+    const none = assembleSystemPrompt({ tools, cwd: "/repo", structured: false });
+    const empty = assembleSystemPrompt({
+      tools,
+      cwd: "/repo",
+      structured: false,
+      skill: { name: "haiku", body: "   " },
+    });
+    expect(none).not.toContain("## Active skill");
+    expect(empty).not.toContain("## Active skill");
+  });
 });

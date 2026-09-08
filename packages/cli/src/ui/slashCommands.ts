@@ -18,6 +18,8 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   { command: "/raw", description: "Show the verbatim model output for each repaired tool call" },
   { command: "/agents", description: "List the agent definitions (invoke with @<name> <task>)" },
+  { command: "/skills", description: "List skills (activate with @<name>)" },
+  { command: "/skill", description: "Clear the active skill: /skill off", takesArgument: true },
   { command: "/share", description: "Export this session to a Markdown or HTML file" },
   { command: "/model", description: "List or switch between configured models" },
   { command: "/rename", description: "Give this session a name", takesArgument: true },

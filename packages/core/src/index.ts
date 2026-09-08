@@ -9,6 +9,8 @@ export type { ExpandedMentions } from "./agent/mentions.js";
 export { listProjectFiles } from "./config/project-files.js";
 export { loadAgentDefinitions } from "./config/agents.js";
 export type { AgentDefinition } from "./config/agents.js";
+export { loadSkills } from "./config/skills.js";
+export type { Skill } from "./config/skills.js";
 export { executeToolCall } from "./agent/executor.js";
 export type { AgentEvent } from "./agent/events.js";
 export { PERSONA, assembleSystemPrompt } from "./agent/system-prompt.js";

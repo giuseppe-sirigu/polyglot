@@ -12,6 +12,7 @@ import {
   type ResolvedConfig,
   type Session,
   type SessionSummary,
+  type Skill,
   type UserQuestionRequest,
   addGiveUp,
   addParseError,
@@ -72,6 +73,7 @@ import {
   configuredModelEntries,
   resolveConfiguredModel,
 } from "../modelRouting.js";
+import { resolveSkillActivation } from "../skillActivation.js";
 import { ApprovalPrompt } from "./ApprovalPrompt.js";
 import { AskUserQuestionPrompt } from "./AskUserQuestionPrompt.js";
 import { AutoUpdateConsentPrompt } from "./AutoUpdateConsentPrompt.js";
@@ -187,16 +189,27 @@ export function App({
   // list the moment `activeModel` no longer points at it.
   const modelEntries = useMemo<ModelEntry[]>(() => configuredModelEntries(resolved), [resolved]);
 
-  // Non-file `@`-mention candidates (agents, later skills) - config is process-stable.
+  // The skill activated for this session via `@<name>` - added to the system prompt from the
+  // next turn on. Session-scoped, never persisted.
+  const [activeSkill, setActiveSkill] = useState<Skill | null>(null);
+
+  // Non-file `@`-mention candidates (agents + skills) - config is process-stable.
   const mentionExtras = useMemo<AtCandidate[]>(
-    () =>
-      resolved.agents.map((a) => ({
+    () => [
+      ...resolved.agents.map<AtCandidate>((a) => ({
         kind: "agent",
         value: `@${a.name}`,
         label: a.name,
         hint: a.description || undefined,
       })),
-    [resolved.agents],
+      ...resolved.skills.map<AtCandidate>((s) => ({
+        kind: "skill",
+        value: `@${s.name}`,
+        label: s.name,
+        hint: s.description || undefined,
+      })),
+    ],
+    [resolved.agents, resolved.skills],
   );
 
   // Candidate list for the `@`-mention file picker - loaded once per cwd, capped, gitignore-aware.
@@ -630,6 +643,7 @@ export function App({
         mode,
         structured: activeAdapter.capabilities.structuredOutput,
         projectInstructions: resolved.projectInstructions.text,
+        skill: activeSkill ? { name: activeSkill.name, body: activeSkill.body } : undefined,
       }),
     [
       tools,
@@ -637,6 +651,7 @@ export function App({
       mode,
       activeAdapter.capabilities.structuredOutput,
       resolved.projectInstructions.text,
+      activeSkill,
     ],
   );
 
@@ -898,6 +913,11 @@ export function App({
             resolved.agents.length > 0
               ? resolved.agents.map((a) => `@${a.name}`).join(", ")
               : "none",
+          skill: activeSkill
+            ? `${activeSkill.name} (${resolved.skills.length} available)`
+            : resolved.skills.length > 0
+              ? `none (${resolved.skills.length} available)`
+              : "none",
           sessionId: session.id,
           messageCount: session.messages.length,
           contextUsedPercent,
@@ -953,6 +973,49 @@ export function App({
                     `  @${a.name} — ${a.description || "(no description)"}${
                       a.model ? ` · ${a.model}` : ""
                     }${a.tools ? ` · tools: ${a.tools.join(", ")}` : ""}  [${a.source}]`,
+                )
+                .join("\n")}`,
+      });
+      return;
+    }
+
+    if (value === "/skill" || value === "/skill off") {
+      pushItem({ kind: "user", text: value });
+      if (value === "/skill") {
+        pushItem({
+          kind: "system",
+          tone: "info",
+          text: activeSkill
+            ? `skill "${activeSkill.name}" is active - /skill off to clear`
+            : "no skill is active - activate one with @<name> (/skills to list)",
+        });
+        return;
+      }
+      pushItem({
+        kind: "system",
+        tone: "info",
+        text: activeSkill
+          ? `skill "${activeSkill.name}" cleared - takes effect next turn`
+          : "no skill is active",
+      });
+      setActiveSkill(null);
+      return;
+    }
+
+    if (value === "/skills") {
+      pushItem({ kind: "user", text: value });
+      pushItem({
+        kind: "system",
+        tone: "info",
+        text:
+          resolved.skills.length === 0
+            ? "No skills. Add one at .polyglot/skills/<name>/SKILL.md, then activate it with @<name>."
+            : `Skills (@<name> to activate, /skill off to clear):\n${resolved.skills
+                .map(
+                  (s) =>
+                    `  ${activeSkill?.name === s.name ? "* " : "  "}@${s.name} — ${
+                      s.description || "(no description)"
+                    }  [${s.source}]`,
                 )
                 .join("\n")}`,
       });
@@ -1062,6 +1125,25 @@ export function App({
       return;
     }
 
+    // `@<skill>` anywhere in the message activates that skill for the rest of the session; the
+    // directive token is stripped from what the model sees. The system prompt is fixed per turn,
+    // so it takes effect from the next turn on.
+    let message = value;
+    const skillActivation = resolveSkillActivation(value, resolved.skills);
+    if (skillActivation) {
+      setActiveSkill(skillActivation.skill);
+      pushItem({
+        kind: "system",
+        tone: "info",
+        text: `skill "${skillActivation.skill.name}" active - takes effect next turn (/skill off to clear)`,
+      });
+      if (!skillActivation.strippedText) {
+        pushItem({ kind: "user", text: value });
+        return;
+      }
+      message = skillActivation.strippedText;
+    }
+
     if (shouldCompact(session, activeAdapter)) {
       const { before, after, note } = await compactWithRouting();
       pushItem({
@@ -1078,9 +1160,9 @@ export function App({
       text: turnInput,
       attached,
       skipped,
-    } = value.includes("@")
-      ? await expandFileMentions(value, session.cwd)
-      : { text: value, attached: [], skipped: [] };
+    } = message.includes("@")
+      ? await expandFileMentions(message, session.cwd)
+      : { text: message, attached: [], skipped: [] };
 
     pushItem({ kind: "user", text: value });
     for (const a of attached) {
@@ -1132,6 +1214,7 @@ export function App({
             mode,
             structured,
             projectInstructions: resolved.projectInstructions.text,
+            skill: activeSkill ? { name: activeSkill.name, body: activeSkill.body } : undefined,
           }),
         tools,
         gate,

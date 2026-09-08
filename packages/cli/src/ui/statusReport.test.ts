@@ -38,6 +38,7 @@ describe("formatStatusReport", () => {
     mcpServers: [],
     instructions: "none",
     agents: "none",
+    skill: "none",
     sessionId: "abc",
     messageCount: 4,
     contextUsedPercent: 12,
@@ -85,6 +86,9 @@ describe("formatStatusReport", () => {
     );
     expect(formatStatusReport({ ...base, instructions: "AGENTS.md + POLYGLOT.md (2 KB)" })).toMatch(
       /instructions:\s+AGENTS\.md \+ POLYGLOT\.md \(2 KB\)/,
+    );
+    expect(formatStatusReport({ ...base, skill: "haiku (3 available)" })).toMatch(
+      /skill:\s+haiku \(3 available\)/,
     );
   });
 

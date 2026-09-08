@@ -18,6 +18,8 @@ export interface StatusReportFields {
   instructions: string;
   /** Agent-definition names loaded, or "none". */
   agents: string;
+  /** Active skill (with available count), or "none". */
+  skill: string;
   sessionId: string;
   messageCount: number;
   contextUsedPercent: number | undefined;
@@ -78,6 +80,7 @@ export function formatStatusReport(f: StatusReportFields): string {
     `  mcp servers:  ${f.mcpServers.length > 0 ? f.mcpServers.join(", ") : "none"}`,
     `  instructions: ${f.instructions}`,
     `  agents:       ${f.agents}`,
+    `  skill:        ${f.skill}`,
     `  cost:         ${f.cost}`,
     `  reliability:  ${f.reliability}`,
     `  cwd:          ${f.cwd}`,

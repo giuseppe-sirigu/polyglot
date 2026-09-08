@@ -23,13 +23,22 @@ export function assembleSystemPrompt(opts: {
   structured: boolean;
   /** `AGENTS.md` / `POLYGLOT.md` contents - see config/instructions.ts. */
   projectInstructions?: string;
+  /** The active skill for this session (`@<name>`), spliced in after the project instructions -
+   * see config/skills.ts. */
+  skill?: { name: string; body: string };
 }): string {
   const promptTools =
     opts.mode === "plan" ? opts.tools : opts.tools.filter((t) => !PLAN_ONLY_TOOLS.has(t.name));
   const instructions = opts.projectInstructions?.trim()
     ? `## Project instructions\n\n${opts.projectInstructions.trim()}\n\n`
     : "";
-  return `${PERSONA}\n\n${instructions}${buildToolSystemPrompt(promptTools, opts.cwd, opts.mode, {
-    structured: opts.structured,
-  })}`;
+  const skill = opts.skill?.body.trim()
+    ? `## Active skill: ${opts.skill.name}\n\n${opts.skill.body.trim()}\n\n`
+    : "";
+  return `${PERSONA}\n\n${instructions}${skill}${buildToolSystemPrompt(
+    promptTools,
+    opts.cwd,
+    opts.mode,
+    { structured: opts.structured },
+  )}`;
 }

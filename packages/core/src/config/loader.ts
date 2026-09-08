@@ -12,6 +12,7 @@ import {
   type Settings,
   SettingsSchema,
 } from "./schema.js";
+import { type Skill, loadSkills } from "./skills.js";
 
 export interface EngineConfig {
   provider: "anthropic" | "openai-compatible";
@@ -50,6 +51,9 @@ export interface ResolvedConfig {
   /** Agent definitions from `~/.polyglot/agents/` + `<cwd>/.polyglot/agents/` - invoked via
    * `@<name>`. Always resolved (`[]` when none or `POLYGLOT_NO_AGENTS` is set). */
   agents: AgentDefinition[];
+  /** Skills from `~/.polyglot/skills/` + `<cwd>/.polyglot/skills/` - activated for a session via
+   * `@<name>`. Always resolved (`[]` when none or `POLYGLOT_NO_SKILLS` is set). */
+  skills: Skill[];
   /** Model routing - see SettingsSchema.routing. Always resolved (`failover` defaults to `[]`).
    * Entries are model ids/labels the frontend resolves against `models[]`. */
   routing: { failover: string[]; summaryModel?: string; planModel?: string };
@@ -346,5 +350,6 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): R
     },
     projectInstructions: loadProjectInstructions(cwd, env),
     agents: loadAgentDefinitions(cwd, env),
+    skills: loadSkills(cwd, env),
   };
 }
