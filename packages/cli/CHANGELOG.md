@@ -1,5 +1,13 @@
 # @usepolyglot/cli
 
+## 0.8.0
+
+### Minor Changes
+
+- 5706ea3: Agent definitions. Drop a Markdown file at `.polyglot/agents/<name>.md` (or `~/.polyglot/agents/` for one available everywhere) with frontmatter — `description`, an optional `tools` allowlist, an optional `model` — and a body that becomes the agent's system prompt. Invoke it by starting a message with `@<name> <task>`: it runs as a one-shot sub-agent with just its allowed tools (and its own model, if pinned), streams its work into the transcript, and the result is recorded in the session so the main model and `--resume` see it. The model can also delegate to an agent on its own via the `agent_<name>` tool. `@` in the input now also suggests agents; `/agents` lists them and `/status` shows them. Set `POLYGLOT_NO_AGENTS=1` to disable. Works in `-p` mode too.
+- ee270cd: `@`-mention a file to attach it to your message. Type `@` in the input for a fuzzy-search popup of the project's files (arrow keys, tab or enter to insert), or type the path directly. On send, each `@<path>` is replaced with the file's contents in a `<file>` block — so the model gets it without a `read_file` round-trip. The file list respects `.gitignore`; secret files (`.env`, keys, `.ssh/…`) are never inlined and get a note instead. Works in `-p` mode too.
+- e0b3a8a: Skills. Put a focused instruction bundle at `.polyglot/skills/<name>/SKILL.md` (or `~/.polyglot/skills/` for one available everywhere) — frontmatter `description`, body is the guidance — and activate it for the session by typing `@<name>` in a message. Its instructions are added to the system prompt from the next turn until `/skill off`. Bundled resource files sit alongside `SKILL.md` and the model reads them by relative path. `@` suggestions now include skills; `/skills` lists them and shows which is active; `/status` has a skill line. Same `SKILL.md` layout as Claude Code, so skills are portable. `POLYGLOT_NO_SKILLS=1` disables. In `-p` mode, a `@<name>` token in the prompt activates the skill for that run.
+
 ## 0.7.0
 
 ### Minor Changes
