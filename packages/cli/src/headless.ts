@@ -4,6 +4,7 @@ import {
   PolicyGate,
   type ResolvedConfig,
   type Session,
+  type Skill,
   addGiveUp,
   addParseError,
   addToolCall,
@@ -49,6 +50,7 @@ import {
   resolveConfiguredModel,
 } from "./modelRouting.js";
 import { applyCapabilityProbe } from "./probe.js";
+import { resolveSkillActivation } from "./skillActivation.js";
 
 /** Resolves a `--resume` token: a `.jsonl` path loads directly, anything else is a session id
  * (or, when absent, the most recent session). Shared by main.ts and headless.ts. */
@@ -228,6 +230,9 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     tools.register(createExitPlanModeTool(gate, async () => false, "manual", persist));
   }
 
+  // A `@<skill>` token in the prompt activates that skill for the run (unless the prompt is an
+  // agent invocation, which brings its own system prompt).
+  let activeSkill: Skill | null = null;
   const buildSystemPrompt = ({ structured }: { structured: boolean }) =>
     assembleSystemPrompt({
       tools: tools.list(),
@@ -235,6 +240,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
       mode,
       structured,
       projectInstructions: resolved.projectInstructions.text,
+      skill: activeSkill ? { name: activeSkill.name, body: activeSkill.body } : undefined,
     });
 
   const routingCtx = {
@@ -269,6 +275,11 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   // A prompt beginning `@<agent> <task>` runs that agent definition as the turn: its pinned
   // system prompt, tool allowlist, and model.
   const agentInvoke = resolveAgentInvocation(prompt, resolved.agents);
+  const skillActivation = agentInvoke ? null : resolveSkillActivation(prompt, resolved.skills);
+  if (skillActivation) {
+    activeSkill = skillActivation.skill;
+    process.stderr.write(`[polyglot] skill active: ${skillActivation.skill.name}\n`);
+  }
   let turnTools = tools;
   let turnSystemPrompt = buildSystemPrompt({
     structured: (routedPlan ? routedPlan.adapter : adapter).capabilities.structuredOutput,
@@ -313,7 +324,11 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   const fellBackTo: string[] = [];
 
   // `@file` mentions are inlined the same way the interactive frontend does it.
-  const source = agentInvoke ? agentInvoke.rest : prompt;
+  const source = agentInvoke
+    ? agentInvoke.rest
+    : skillActivation?.strippedText
+      ? skillActivation.strippedText
+      : prompt;
   const {
     text: turnInput,
     attached,
