@@ -275,6 +275,60 @@ describe("loadConfig hooks", () => {
   });
 });
 
+describe("loadConfig mcpServers", () => {
+  const base = { provider: "openai-compatible", model: "m" };
+
+  it("accepts a stdio entry and an http entry side by side", () => {
+    const config = loadWithSettings(
+      {
+        ...base,
+        mcpServers: {
+          fs: { command: "npx", args: ["-y", "server-filesystem", "."] },
+          gh: { url: "https://api.example.com/mcp", transport: "http" },
+        },
+      },
+      null,
+    );
+    expect(config.mcpServers.fs).toMatchObject({ command: "npx" });
+    expect(config.mcpServers.gh).toMatchObject({
+      url: "https://api.example.com/mcp",
+      transport: "http",
+    });
+  });
+
+  it("rejects an entry that is neither a command nor a url", () => {
+    expect(() => loadWithSettings({ ...base, mcpServers: { bad: { foo: 1 } } }, null)).toThrow();
+  });
+
+  it("rejects a non-URL url", () => {
+    expect(() =>
+      loadWithSettings({ ...base, mcpServers: { bad: { url: "not a url" } } }, null),
+    ).toThrow();
+  });
+
+  it("expands ${VAR} in http headers from the environment, leaving an unset one literal", () => {
+    const config = loadWithSettings(
+      {
+        ...base,
+        mcpServers: {
+          gh: {
+            url: "https://api.example.com/mcp",
+            headers: { Authorization: "Bearer ${GH_TOKEN}", "X-Env": "${MISSING_VAR}" },
+          },
+        },
+      },
+      null,
+      { GH_TOKEN: "secret123" } as NodeJS.ProcessEnv,
+    );
+    const gh = config.mcpServers.gh;
+    if (!gh || !("url" in gh)) throw new Error("expected an http entry");
+    expect(gh.headers).toEqual({
+      Authorization: "Bearer secret123",
+      "X-Env": "${MISSING_VAR}",
+    });
+  });
+});
+
 describe("loadConfig routing", () => {
   const base = { provider: "openai-compatible", model: "m" };
 
