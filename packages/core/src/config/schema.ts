@@ -13,7 +13,7 @@ export const HookSpecSchema = z.object({
 export const McpServerConfigSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).default([]),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
 });
 
 /** One selectable entry for the `/model` command - a full engine config (its own
@@ -54,6 +54,7 @@ export const SettingsSchema = z.object({
    * on a local model, or to correct a stale built-in. */
   pricing: z
     .record(
+      z.string(),
       z.object({
         input: z.number().nonnegative(),
         output: z.number().nonnegative(),
@@ -70,8 +71,8 @@ export const SettingsSchema = z.object({
       allow: z.array(z.string()).default([]),
       deny: z.array(z.string()).default([]),
     })
-    .default({}),
-  mcpServers: z.record(McpServerConfigSchema).default({}),
+    .prefault({}),
+  mcpServers: z.record(z.string(), McpServerConfigSchema).default({}),
   /** When false, nothing about a conversation is written to `~/.polyglot/` - no session
    * transcript, no usage line, no saved plan. `--resume` within the same process still works;
    * once it exits there is nothing to resume. Default true (see loader.ts). */
