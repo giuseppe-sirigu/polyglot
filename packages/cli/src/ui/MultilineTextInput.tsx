@@ -1,6 +1,6 @@
 import chalk from "chalk";
-import { Box, Text, useInput, useStdin } from "ink";
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { Box, Text, useInput } from "ink";
+import { useCallback, useReducer, useRef } from "react";
 import { type AtCandidate, findMentionQuery } from "./atMentions.js";
 import type { SlashCommand } from "./slashCommands.js";
 
@@ -27,20 +27,6 @@ export interface MultilineTextInputProps {
   onMentionQuery?: (query: { query: string; start: number } | null) => void;
   onCloseMentions?: () => void;
 }
-
-// Escape sequences a terminal sends for the literal Home/End keys, taken from Ink's own
-// parse-keypress.js keyName table - Ink's public useInput() never exposes home/end as flags,
-// so these are read directly off the raw input stream that useInput is itself built on.
-const HOME_SEQUENCES = ["\x1b[H", "\x1bOH", "\x1b[1~", "\x1b[7~"];
-const END_SEQUENCES = ["\x1b[F", "\x1bOF", "\x1b[4~", "\x1b[8~"];
-
-// Ink's parser (parse-keypress.js) maps the physical Backspace key's byte (0x7f, sent by
-// most terminals including tmux's "BSpace") to `key.name === 'delete'` - the same name it
-// gives the physical Delete key's sequence (\x1b[3~ and rxvt/putty variants). `key.backspace`
-// only fires for the raw \b/\x08 byte, which almost no physical key actually sends. So Ink's
-// public delete/backspace flags cannot tell these two keys apart - read the raw bytes instead.
-const BACKSPACE_SEQUENCES = ["\x7f", "\b"];
-const FORWARD_DELETE_SEQUENCES = ["\x1b[3~", "\x1b[3$", "\x1b[3^"];
 
 function lineBounds(text: string, offset: number): [start: number, end: number] {
   const start = text.lastIndexOf("\n", offset - 1) + 1;
@@ -93,7 +79,6 @@ export function MultilineTextInput({
   // the previous keypress's result instead of racing on a stale render-time closure.
   const stateRef = useRef({ text: value, cursor: value.length });
   const [, bump] = useReducer((n: number) => n + 1, 0);
-  const { internal_eventEmitter } = useStdin();
 
   const apply = useCallback(
     (nextText: string, nextCursor: number) => {
@@ -191,10 +176,24 @@ export function MultilineTextInput({
       return;
     }
 
-    // Backspace/Delete are handled entirely by the raw-stream listener below, since Ink's
-    // key.delete/key.backspace flags can't distinguish the two physical keys (see above). Both
-    // land here with `input === ''` (they're in Ink's nonAlphanumericKeys list), so falling
-    // through to the final catch-all below is a safe no-op for them.
+    // Ink 7's parser distinguishes the physical keys: `key.backspace` for the 0x7f / \b byte
+    // most terminals send for Backspace, `key.delete` for the \x1b[3~ forward-delete sequence.
+    if (key.backspace) {
+      if (cursor > 0) apply(text.slice(0, cursor - 1) + text.slice(cursor), cursor - 1);
+      return;
+    }
+    if (key.delete) {
+      if (cursor < text.length) apply(text.slice(0, cursor) + text.slice(cursor + 1), cursor);
+      return;
+    }
+    if (key.home) {
+      apply(text, lineBounds(text, cursor)[0]);
+      return;
+    }
+    if (key.end) {
+      apply(text, lineBounds(text, cursor)[1]);
+      return;
+    }
 
     if (key.leftArrow) {
       apply(text, Math.max(0, cursor - 1));
@@ -232,29 +231,6 @@ export function MultilineTextInput({
 
     apply(text.slice(0, cursor) + input + text.slice(cursor), cursor + input.length);
   });
-
-  useEffect(() => {
-    const onData = (chunk: string) => {
-      const { text, cursor } = stateRef.current;
-      if (HOME_SEQUENCES.includes(chunk)) {
-        apply(text, lineBounds(text, cursor)[0]);
-      } else if (END_SEQUENCES.includes(chunk)) {
-        apply(text, lineBounds(text, cursor)[1]);
-      } else if (BACKSPACE_SEQUENCES.includes(chunk)) {
-        if (cursor > 0) {
-          apply(text.slice(0, cursor - 1) + text.slice(cursor), cursor - 1);
-        }
-      } else if (FORWARD_DELETE_SEQUENCES.includes(chunk)) {
-        if (cursor < text.length) {
-          apply(text.slice(0, cursor) + text.slice(cursor + 1), cursor);
-        }
-      }
-    };
-    internal_eventEmitter.on("input", onData);
-    return () => {
-      internal_eventEmitter.off("input", onData);
-    };
-  }, [internal_eventEmitter, apply]);
 
   const { text, cursor } = stateRef.current;
   const lines = text.length === 0 ? [""] : text.split("\n");
