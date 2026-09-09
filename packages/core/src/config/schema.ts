@@ -10,11 +10,25 @@ export const HookSpecSchema = z.object({
   timeoutMs: z.number().int().positive().optional(),
 });
 
-export const McpServerConfigSchema = z.object({
+/** A local MCP server launched as a subprocess and spoken to over stdio. */
+export const McpStdioServerSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).default([]),
   env: z.record(z.string(), z.string()).optional(),
 });
+
+/** A remote MCP server reached over HTTP. */
+export const McpHttpServerSchema = z.object({
+  url: z.string().url(),
+  /** `"http"` = Streamable HTTP (current spec); `"sse"` = legacy HTTP+SSE. Unset = try Streamable
+   * HTTP, fall back to SSE if the server rejects it. */
+  transport: z.enum(["http", "sse"]).optional(),
+  /** Extra request headers (e.g. `Authorization`). A `${VAR}` in a value is replaced from the
+   * environment when config loads, so tokens don't have to sit in `settings.json`. */
+  headers: z.record(z.string(), z.string()).optional(),
+});
+
+export const McpServerConfigSchema = z.union([McpStdioServerSchema, McpHttpServerSchema]);
 
 /** One selectable entry for the `/model` command - a full engine config (its own
  * provider/baseURL/apiKey/structuredOutput, independent of the top-level settings) plus a
@@ -156,6 +170,8 @@ export const SettingsSchema = z.object({
 
 export type Settings = z.infer<typeof SettingsSchema>;
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
+export type McpStdioServer = z.infer<typeof McpStdioServerSchema>;
+export type McpHttpServer = z.infer<typeof McpHttpServerSchema>;
 export type ModelEntry = z.infer<typeof ModelEntrySchema>;
 export type HookSpecConfig = z.infer<typeof HookSpecSchema>;
 

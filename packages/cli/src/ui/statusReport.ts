@@ -13,6 +13,7 @@ export interface StatusReportFields {
   transcriptPath: string | null;
   retentionDays: number | undefined;
   autoUpdate: boolean | undefined;
+  /** Configured MCP servers, each formatted as `name (transport)` (or `name (transport, not connected)`). */
   mcpServers: string[];
   /** `AGENTS.md` / `POLYGLOT.md` sources loaded, or "none". */
   instructions: string;

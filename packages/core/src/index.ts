@@ -51,7 +51,13 @@ export {
 } from "./config/instructions.js";
 export type { ProjectInstructions } from "./config/instructions.js";
 export { SettingsSchema } from "./config/schema.js";
-export type { Settings, McpServerConfig, ModelEntry } from "./config/schema.js";
+export type {
+  Settings,
+  McpServerConfig,
+  McpStdioServer,
+  McpHttpServer,
+  ModelEntry,
+} from "./config/schema.js";
 export {
   resolveEngineConfigForModel,
   listModelOptions,

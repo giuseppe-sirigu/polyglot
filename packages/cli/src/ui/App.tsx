@@ -766,7 +766,9 @@ export function App({
         pushItem({
           kind: "system",
           tone: "info",
-          text: `Connected ${mcp.tools.length} MCP tool(s) from: ${Object.keys(resolved.mcpServers).join(", ")}`,
+          text: `Connected ${mcp.tools.length} MCP tool(s) from: ${mcp.servers
+            .map((s) => `${s.serverName} (${s.transport})`)
+            .join(", ")}`,
         });
       }
     }
@@ -970,7 +972,12 @@ export function App({
             : null,
           retentionDays: resolved.retentionDays,
           autoUpdate: getAutoUpdatePreference(),
-          mcpServers: Object.keys(resolved.mcpServers),
+          mcpServers: Object.entries(resolved.mcpServers).map(([name, cfg]) => {
+            const connected = mcp?.servers.find((s) => s.serverName === name);
+            if (connected) return `${name} (${connected.transport})`;
+            const kind = "url" in cfg ? (cfg.transport ?? "http") : "stdio";
+            return `${name} (${kind}, not connected)`;
+          }),
           instructions: resolved.projectInstructions.sources.length
             ? `${resolved.projectInstructions.sources.join(" + ")} (${Math.max(
                 1,

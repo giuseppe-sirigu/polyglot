@@ -357,6 +357,30 @@ function resolveRedaction(r: Settings["redaction"]): ResolvedConfig["redaction"]
   };
 }
 
+/** Replaces `${VAR}` in a string with `env.VAR`, leaving an unset `${VAR}` literal. */
+function expandEnv(value: string, env: NodeJS.ProcessEnv): string {
+  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, name) => env[name] ?? whole);
+}
+
+/** Expands `${VAR}` in remote MCP servers' request headers so tokens can live in the
+ * environment rather than the settings file. Stdio entries pass through untouched. */
+function resolveMcpServers(
+  servers: Settings["mcpServers"],
+  env: NodeJS.ProcessEnv,
+): Settings["mcpServers"] {
+  const out: Settings["mcpServers"] = {};
+  for (const [name, config] of Object.entries(servers)) {
+    if ("url" in config && config.headers) {
+      const headers: Record<string, string> = {};
+      for (const [k, v] of Object.entries(config.headers)) headers[k] = expandEnv(v, env);
+      out[name] = { ...config, headers };
+    } else {
+      out[name] = config;
+    }
+  }
+  return out;
+}
+
 /** Resolves lifecycle hooks. Project hooks are folded in only when the global config sets
  * `allowProjectHooks: true`; `POLYGLOT_NO_HOOKS` clears everything. */
 function resolveHooks(
@@ -412,7 +436,7 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): R
         merged.provider === "openai-compatible" ? merged.structuredOutput : undefined,
     },
     permissions: merged.permissions,
-    mcpServers: merged.mcpServers,
+    mcpServers: resolveMcpServers(merged.mcpServers, env),
     probeCapabilities: merged.probeCapabilities,
     subAgents: merged.subAgents,
     subAgentModel: merged.subAgentModel,
