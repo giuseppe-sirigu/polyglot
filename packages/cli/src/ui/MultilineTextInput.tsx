@@ -1,4 +1,3 @@
-import chalk from "chalk";
 import { Box, Text, useInput } from "ink";
 import { useCallback, useReducer, useRef } from "react";
 import { type AtCandidate, findMentionQuery } from "./atMentions.js";
@@ -252,16 +251,16 @@ export function MultilineTextInput({
         const before = line.slice(0, col);
         const atCursor = col < line.length ? line[col] : " ";
         const after = col < line.length ? line.slice(col + 1) : "";
-        // A single string with the cursor's styling embedded as raw ANSI (via chalk), not a
-        // separate sibling <Text> for the cursor: when a long unwrapped line word-wraps inside
-        // the bordered box, Ink's flexbox row layout doesn't correctly re-flow a *sibling*
-        // Text's position across that wrap - the cursor ends up floating at some arbitrary
-        // column instead of tracking the actual wrapped text. One Text node's own content wraps
-        // correctly, ANSI codes and all, because wrapping never needs to reason about sibling
-        // layout at all.
+        // A single string with the cursor's styling embedded as raw ANSI (reverse-video via
+        // \x1b[7m…\x1b[27m, matching what chalk.inverse emits), not a separate sibling <Text>
+        // for the cursor: when a long unwrapped line word-wraps inside the bordered box, Ink's
+        // flexbox row layout doesn't correctly re-flow a *sibling* Text's position across that
+        // wrap - the cursor ends up floating at some arbitrary column instead of tracking the
+        // actual wrapped text. One Text node's own content wraps correctly, ANSI codes and all,
+        // because wrapping never needs to reason about sibling layout at all.
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: lines are re-derived fresh every render, no stable id
-          <Text key={idx}>{before + chalk.inverse(atCursor) + after}</Text>
+          <Text key={idx}>{`${before}\x1b[7m${atCursor}\x1b[27m${after}`}</Text>
         );
       })}
     </Box>
