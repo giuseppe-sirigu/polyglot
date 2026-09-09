@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+/** One shell command wired to an agent lifecycle point - see hooks/dispatcher.ts for the
+ * stdin payload / exit-code contract. */
+export const HookSpecSchema = z.object({
+  command: z.string(),
+  /** Glob-matched tool names this hook fires for (pre/postToolUse only). Unset = every tool. */
+  tools: z.array(z.string()).optional(),
+  /** Kill the hook after this many ms (default 5000). */
+  timeoutMs: z.number().int().positive().optional(),
+});
+
 export const McpServerConfigSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).default([]),
@@ -115,6 +125,18 @@ export const SettingsSchema = z.object({
       extraPatterns: z.array(z.object({ label: z.string(), regex: z.string() })).optional(),
     })
     .optional(),
+  /** Shell commands run at agent lifecycle points. Project-local hooks (`.polyglot/settings.json`)
+   * are ignored unless the global settings set `allowProjectHooks: true` - running polyglot in an
+   * untrusted repo must not execute its shell. `POLYGLOT_NO_HOOKS=1` disables all. */
+  hooks: z
+    .object({
+      preToolUse: z.array(HookSpecSchema).optional(),
+      postToolUse: z.array(HookSpecSchema).optional(),
+      userPromptSubmit: z.array(HookSpecSchema).optional(),
+      /** Global-file only: whether hooks defined in a project settings file run at all. */
+      allowProjectHooks: z.boolean().optional(),
+    })
+    .optional(),
   /** Model routing. All entries are model ids/labels resolved against `models[]` (or the
    * startup model), the same way `/model <query>` matches. Left without schema defaults so
    * layered configs can tell "unset" from "set" - `failover` defaults to `[]` in loader.ts. */
@@ -134,5 +156,6 @@ export const SettingsSchema = z.object({
 export type Settings = z.infer<typeof SettingsSchema>;
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 export type ModelEntry = z.infer<typeof ModelEntrySchema>;
+export type HookSpecConfig = z.infer<typeof HookSpecSchema>;
 
 export const EMPTY_SETTINGS: Settings = SettingsSchema.parse({});

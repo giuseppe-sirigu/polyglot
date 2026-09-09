@@ -1,3 +1,4 @@
+import type { HookDispatcher } from "../hooks/dispatcher.js";
 import type { PermissionGate } from "../permissions/gate.js";
 import type { ContentFinding } from "../permissions/secret-patterns.js";
 import type { ParsedToolCall } from "../tool-protocol/types.js";
@@ -14,6 +15,9 @@ export interface ExecutedToolCall {
    * `redacted` is true, `resultText` above is already the scrubbed text. */
   findings?: ContentFinding[];
   redacted?: boolean;
+  /** Set when a `preToolUse` / `postToolUse` hook blocked the call - `resultText` carries the
+   * hook's reason and `isError` is true. */
+  hookBlocked?: { event: "preToolUse" | "postToolUse"; reason: string };
 }
 
 /** Scans a tool result before it becomes `resultText` (→ the model's context, the transcript,
@@ -31,6 +35,7 @@ export interface ExecuteToolCallContext {
   sessionId: string;
   signal: AbortSignal;
   scanOutput?: ScanToolOutput;
+  hooks?: HookDispatcher;
 }
 
 export async function executeToolCall(
@@ -79,28 +84,67 @@ export async function executeToolCall(
     };
   }
 
+  // preToolUse hooks run after the gate allows - they can further block, never grant.
+  const pre = await ctx.hooks?.preToolUse(tool.name, call.input);
+  if (pre?.block !== undefined) {
+    return {
+      toolCallId: call.id,
+      toolName: tool.name,
+      resultText: `Blocked by a preToolUse hook: ${pre.block}`,
+      isError: true,
+      permission,
+      hookBlocked: { event: "preToolUse", reason: pre.block },
+    };
+  }
+
   try {
     const result = await tool.execute(call.input, {
       cwd: ctx.cwd,
       sessionId: ctx.sessionId,
       signal: ctx.signal,
     });
-    const isError = Boolean(result.isError);
-    return {
-      toolCallId: call.id,
-      toolName: tool.name,
-      permission,
-      ...scan(ctx, tool.name, result.toModelText(), isError),
-    };
+    return finish(ctx, call, tool.name, permission, result.toModelText(), Boolean(result.isError));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return {
-      toolCallId: call.id,
-      toolName: tool.name,
+    return finish(
+      ctx,
+      call,
+      tool.name,
       permission,
-      ...scan(ctx, tool.name, `Tool execution threw an error: ${message}`, true),
+      `Tool execution threw an error: ${message}`,
+      true,
+    );
+  }
+}
+
+/** Post-execution pipeline: content scan, then postToolUse hooks. */
+async function finish(
+  ctx: ExecuteToolCallContext,
+  call: ParsedToolCall,
+  toolName: string,
+  permission: ExecutedToolCall["permission"],
+  rawText: string,
+  rawIsError: boolean,
+): Promise<ExecutedToolCall> {
+  const toolCallId = call.id;
+  const scanned = scan(ctx, toolName, rawText, rawIsError);
+  const post = await ctx.hooks?.postToolUse(
+    toolName,
+    call.input,
+    scanned.resultText,
+    scanned.isError,
+  );
+  if (post?.block !== undefined) {
+    return {
+      toolCallId,
+      toolName,
+      permission,
+      resultText: `Blocked by a postToolUse hook: ${post.block}`,
+      isError: true,
+      hookBlocked: { event: "postToolUse", reason: post.block },
     };
   }
+  return { toolCallId, toolName, permission, ...scanned };
 }
 
 /** Runs `ctx.scanOutput` over a tool result, returning the (possibly redacted) text, the

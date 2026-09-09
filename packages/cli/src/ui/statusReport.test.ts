@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { type StatusReportFields, describeEndpoint, formatStatusReport } from "./statusReport.js";
+import {
+  type StatusReportFields,
+  describeEndpoint,
+  formatHooksLine,
+  formatStatusReport,
+} from "./statusReport.js";
+
+describe("formatHooksLine", () => {
+  it("is 'none' with no hooks", () => {
+    expect(formatHooksLine({ preToolUse: [], postToolUse: [], userPromptSubmit: [] })).toBe("none");
+  });
+  it("lists only the non-empty events with counts", () => {
+    expect(formatHooksLine({ preToolUse: [1, 2], postToolUse: [], userPromptSubmit: [1] })).toBe(
+      "preToolUse(2) userPromptSubmit(1)",
+    );
+  });
+});
 
 describe("describeEndpoint", () => {
   it("marks the Anthropic API as data-leaves-machine", () => {
@@ -40,6 +56,7 @@ describe("formatStatusReport", () => {
     agents: "none",
     skill: "none",
     scanning: "warn tool output",
+    hooks: "none",
     sessionId: "abc",
     messageCount: 4,
     contextUsedPercent: 12,
@@ -95,6 +112,9 @@ describe("formatStatusReport", () => {
       /scanning:\s+redact tool output \+ pii/,
     );
     expect(formatStatusReport({ ...base, scanning: "off" })).toMatch(/scanning:\s+off/);
+    expect(formatStatusReport({ ...base, hooks: "preToolUse(1) userPromptSubmit(2)" })).toMatch(
+      /hooks:\s+preToolUse\(1\) userPromptSubmit\(2\)/,
+    );
   });
 
   it("shows the reliability line verbatim", () => {

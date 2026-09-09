@@ -36,6 +36,13 @@ export type AgentEvent =
       reason?: string;
     }
   | { type: "tool_parse_error"; toolCallId: string; attemptedName: string | null; message: string }
+  // A user-defined lifecycle hook blocked an action. `toolCallId` is set for the tool events.
+  | {
+      type: "hook_blocked";
+      event: "preToolUse" | "postToolUse" | "userPromptSubmit";
+      reason: string;
+      toolCallId?: string;
+    }
   | { type: "usage"; inputTokens: number; outputTokens: number; cachedInputTokens?: number }
   // Emitted mid-turn when the active model errors or gives up and a configured failover model
   // takes over for the rest of the session. `reason` is the trigger; `detail` is the error text

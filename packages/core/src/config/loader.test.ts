@@ -235,6 +235,46 @@ describe("loadConfig redaction", () => {
   });
 });
 
+describe("loadConfig hooks", () => {
+  const base = { provider: "openai-compatible", model: "m" };
+  const h = (cmd: string) => ({ command: cmd });
+
+  it("defaults to all-empty", () => {
+    expect(loadWithSettings(base, null).hooks).toEqual({
+      preToolUse: [],
+      postToolUse: [],
+      userPromptSubmit: [],
+    });
+  });
+
+  it("resolves global hooks", () => {
+    const config = loadWithSettings(
+      { ...base, hooks: { preToolUse: [h("lint")], userPromptSubmit: [h("gate")] } },
+      null,
+    );
+    expect(config.hooks.preToolUse).toEqual([{ command: "lint" }]);
+    expect(config.hooks.userPromptSubmit).toEqual([{ command: "gate" }]);
+  });
+
+  it("ignores project hooks unless the global config sets allowProjectHooks", () => {
+    const off = loadWithSettings({ ...base }, { hooks: { preToolUse: [h("evil")] } });
+    expect(off.hooks.preToolUse).toEqual([]);
+
+    const on = loadWithSettings(
+      { ...base, hooks: { allowProjectHooks: true, preToolUse: [h("global")] } },
+      { hooks: { preToolUse: [h("project")] } },
+    );
+    expect(on.hooks.preToolUse).toEqual([{ command: "global" }, { command: "project" }]);
+  });
+
+  it("POLYGLOT_NO_HOOKS clears everything", () => {
+    const config = loadWithSettings({ ...base, hooks: { preToolUse: [h("lint")] } }, null, {
+      POLYGLOT_NO_HOOKS: "1",
+    });
+    expect(config.hooks).toEqual({ preToolUse: [], postToolUse: [], userPromptSubmit: [] });
+  });
+});
+
 describe("loadConfig routing", () => {
   const base = { provider: "openai-compatible", model: "m" };
 

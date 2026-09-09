@@ -1,3 +1,4 @@
+import type { HookDispatcher } from "../hooks/dispatcher.js";
 import type { PermissionGate } from "../permissions/gate.js";
 import type { ProviderAdapter } from "../providers/types.js";
 import type { Message, Session } from "../session/types.js";
@@ -56,6 +57,8 @@ export interface RunAgentTurnOptions {
    * context (and the transcript / audit log). Built from `redaction` settings by the frontend;
    * unset = no scanning. */
   scanToolOutput?: ScanToolOutput;
+  /** preToolUse / postToolUse lifecycle hooks. userPromptSubmit runs in the frontend, not here. */
+  hooks?: HookDispatcher;
 }
 
 const DEFAULT_MAX_STEPS = 25;
@@ -358,6 +361,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
           sessionId: session.id,
           signal,
           scanOutput: opts.scanToolOutput,
+          hooks: opts.hooks,
         }).then((executed) => {
           onEvent({
             type: "permission_decision",
@@ -366,6 +370,14 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
             decision: executed.permission.decision,
             reason: executed.permission.reason,
           });
+          if (executed.hookBlocked) {
+            onEvent({
+              type: "hook_blocked",
+              event: executed.hookBlocked.event,
+              reason: executed.hookBlocked.reason,
+              toolCallId,
+            });
+          }
           onEvent({
             type: "tool_result",
             toolCallId,
