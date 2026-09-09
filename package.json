@@ -34,11 +34,6 @@
     "onlyBuiltDependencies": ["@biomejs/biome", "esbuild"],
     "overrides": {
       "qs@<6.16.0": ">=6.16.0"
-    },
-    "peerDependencyRules": {
-      "allowedVersions": {
-        "openai>zod": "4"
-      }
     }
   }
 }
