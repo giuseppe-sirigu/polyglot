@@ -1,5 +1,34 @@
 # @usepolyglot/cli
 
+## 0.10.0
+
+### Minor Changes
+
+- 740476b: MCP servers can now be remote. Give a server a `url` instead of a `command` and Polyglot connects over HTTP:
+  
+  ```json
+  {
+    "mcpServers": {
+      "github": {
+        "url": "https://api.githubcopilot.com/mcp/",
+        "headers": { "Authorization": "Bearer ${GITHUB_MCP_TOKEN}" }
+      }
+    }
+  }
+  ```
+  
+  It tries the current Streamable HTTP transport and falls back to legacy HTTP+SSE if the server only speaks that; pin `"transport": "http"` or `"sse"` to skip the negotiation. `${VAR}` in a header value is read from the environment so tokens stay out of `settings.json`.
+  
+  MCP servers now also connect **in parallel with a 10-second timeout**, so a slow or unreachable one no longer holds up startup - it's reported and skipped like any other connection failure. `/status` and the startup line show each server's transport (`github (http)`, `filesystem (stdio)`).
+
+### Patch Changes
+
+- 7cb790d: Internal: drop the `chalk` dependency. It was used in exactly one place - inverting the single character under the input cursor - and chalk 6 raised its Node requirement to 22 (Polyglot targets 20+). Replaced with the literal `\x1b[7m…\x1b[27m` reverse-video codes, which is what `chalk.inverse` emitted anyway. One fewer direct dependency; cursor rendering is unchanged (verified in a terminal).
+- cd44fb8: Internal: upgrade `glob` to 13.x. The `glob` tool's behaviour is unchanged - same pattern matching, same `node_modules` / secret-path exclusions, same sorted output. No source changes were needed; the two majors dropped Node 18 support (Polyglot already requires Node 20+) and trimmed transitive dependencies.
+- fdd5677: Internal: upgrade `ink` to 7.x and `react` to 19.x (ink 6+ requires React 19). The only source change is in the input box: ink 7's key parser now reports `home` / `end` / `backspace` / `delete` correctly and distinctly, so the previous workaround - a listener on ink's private `internal_eventEmitter` that read raw escape sequences for those keys - is gone, replaced by normal `useInput` handling. Home/End/Backspace/Forward-delete editing behaves the same; verified in a real terminal.
+- a0b2a3f: Internal: upgrade the `openai` SDK to 7.x. Only `providers/openai-compatible.ts` uses it, and the surface Polyglot touches - the client constructor, `chat.completions.create` with `stream: true` / `stream_options` / `response_format`, and iterating the stream - is unchanged across the three majors (which switched to native `fetch`, made the AWS/Bedrock and `zod` dependencies optional peers, and require Node 20+). Live-verified against a local Ollama endpoint: streaming, tool-call loop, usage chunks, structured output, mid-stream abort, and `--probe` all work. Drops the `pnpm` `peerDependencyRules` workaround added for zod 4 - `openai` 7 accepts zod 4 directly.
+- 6c6a8f9: Internal: upgrade `zod` to 4.x. Settings-file parsing behaves identically - defaults, unknown-key stripping, and validation are unchanged (`z.record` calls now take an explicit key type, and the `permissions` default uses `.prefault`). Error text for a malformed `settings.json` value may differ slightly. `openai`'s zod peer (still on 3.x) is allowed against 4.x until that dependency is bumped.
+
 ## 0.9.0
 
 ### Minor Changes
