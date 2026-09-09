@@ -43,7 +43,7 @@ jobs:
           SCENARIO_INCLUDE_ANTHROPIC: ${{ github.event.inputs.include_anthropic == 'true' && '1' || '' }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: pnpm scenario:live | tee scenario-matrix.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: scenario-matrix
