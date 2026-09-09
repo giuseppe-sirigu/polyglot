@@ -22,6 +22,8 @@ export interface StatusReportFields {
   skill: string;
   /** Tool-output content scanning: "warn" / "redact" (+ "pii" when on), or "off". */
   scanning: string;
+  /** Lifecycle hook counts, e.g. "preToolUse(1) userPromptSubmit(1)", or "none". */
+  hooks: string;
   sessionId: string;
   messageCount: number;
   contextUsedPercent: number | undefined;
@@ -33,6 +35,18 @@ export interface StatusReportFields {
 }
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]);
+
+/** "preToolUse(1) userPromptSubmit(2)" for a resolved hooks config, or "none". */
+export function formatHooksLine(hooks: {
+  preToolUse: unknown[];
+  postToolUse: unknown[];
+  userPromptSubmit: unknown[];
+}): string {
+  const parts = (["preToolUse", "postToolUse", "userPromptSubmit"] as const)
+    .filter((k) => hooks[k].length > 0)
+    .map((k) => `${k}(${hooks[k].length})`);
+  return parts.length > 0 ? parts.join(" ") : "none";
+}
 
 /** Human description of where conversation data is sent, and whether that leaves the machine. */
 export function describeEndpoint(provider: string, baseURL: string | undefined): string {
@@ -84,6 +98,7 @@ export function formatStatusReport(f: StatusReportFields): string {
     `  agents:       ${f.agents}`,
     `  skill:        ${f.skill}`,
     `  scanning:     ${f.scanning}`,
+    `  hooks:        ${f.hooks}`,
     `  cost:         ${f.cost}`,
     `  reliability:  ${f.reliability}`,
     `  cwd:          ${f.cwd}`,

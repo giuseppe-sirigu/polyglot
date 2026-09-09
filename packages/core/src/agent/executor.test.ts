@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
+import type { HookDispatcher, HookOutcome } from "../hooks/dispatcher.js";
 import { AllowAllGate, type PermissionGate } from "../permissions/gate.js";
 import { scanContent } from "../permissions/secret-patterns.js";
 import type { ParsedToolCall } from "../tool-protocol/types.js";
 import { type ToolDefinition, ToolRegistry, textResult } from "../tools/types.js";
 import { type ScanToolOutput, executeToolCall } from "./executor.js";
+
+/** A dispatcher whose pre/post methods return a fixed outcome. */
+function fakeHooks(pre: HookOutcome = {}, post: HookOutcome = {}): HookDispatcher {
+  return {
+    hasAny: () => true,
+    preToolUse: async () => pre,
+    postToolUse: async () => post,
+    userPromptSubmit: async () => ({}),
+  };
+}
 
 const echoTool: ToolDefinition = {
   name: "echo",
@@ -115,5 +126,47 @@ describe("executeToolCall content scanning", () => {
       scanOutput: warnScan,
     });
     expect(executed.findings).toBeUndefined();
+  });
+});
+
+describe("executeToolCall hooks", () => {
+  it("a preToolUse block short-circuits before the tool runs", async () => {
+    let ran = false;
+    const reg = new ToolRegistry();
+    reg.register({
+      ...echoTool,
+      async execute(i) {
+        ran = true;
+        return textResult(`echoed ${JSON.stringify(i)}`);
+      },
+    });
+    const executed = await executeToolCall(call, reg, new AllowAllGate(), {
+      ...ctx,
+      hooks: fakeHooks({ block: "denied by policy" }),
+    });
+    expect(ran).toBe(false);
+    expect(executed.isError).toBe(true);
+    expect(executed.resultText).toContain("denied by policy");
+    expect(executed.hookBlocked).toEqual({ event: "preToolUse", reason: "denied by policy" });
+  });
+
+  it("a postToolUse block replaces the result", async () => {
+    const executed = await executeToolCall(call, registry(), new AllowAllGate(), {
+      ...ctx,
+      hooks: fakeHooks({}, { block: "output withheld" }),
+    });
+    expect(executed.isError).toBe(true);
+    expect(executed.resultText).toContain("output withheld");
+    expect(executed.hookBlocked).toEqual({ event: "postToolUse", reason: "output withheld" });
+  });
+
+  it("passes through when hooks return nothing", async () => {
+    const executed = await executeToolCall(call, registry(), new AllowAllGate(), {
+      ...ctx,
+      hooks: fakeHooks(),
+    });
+    expect(executed.isError).toBe(false);
+    expect(executed.hookBlocked).toBeUndefined();
+    expect(executed.resultText).toContain("echoed");
   });
 });

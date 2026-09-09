@@ -1,3 +1,4 @@
+import type { HookDispatcher } from "../hooks/dispatcher.js";
 import type { PermissionGate } from "../permissions/gate.js";
 import type { ProviderAdapter } from "../providers/types.js";
 import { createSession } from "../session/types.js";
@@ -24,6 +25,8 @@ export interface RunSubAgentOptions {
   /** Content scanning for the sub-run's tool output - forwarded so delegated work gets the
    * same treatment as the main turn. */
   scanToolOutput?: ScanToolOutput;
+  /** Lifecycle hooks - forwarded so a sub-agent's tool calls are gated the same way. */
+  hooks?: HookDispatcher;
 }
 
 export interface SubAgentResult {
@@ -57,6 +60,7 @@ export async function runSubAgent(opts: RunSubAgentOptions): Promise<SubAgentRes
     signal: opts.signal,
     maxSteps: opts.maxSteps ?? 15,
     scanToolOutput: opts.scanToolOutput,
+    hooks: opts.hooks,
     onEvent: (event) => {
       if (event.type === "text_delta") text += event.delta;
       if (event.type === "agent_stop") stopReason = event.reason;

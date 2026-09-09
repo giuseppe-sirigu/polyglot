@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import type { ResolvedHooks } from "../hooks/dispatcher.js";
 import type { SecretPattern } from "../permissions/secret-patterns.js";
 import type { ModelPricing } from "../pricing/pricing.js";
 import type { WebSearchConfig } from "../tools/web-search.js";
@@ -65,6 +66,9 @@ export interface ResolvedConfig {
   /** Skills from `~/.polyglot/skills/` + `<cwd>/.polyglot/skills/` - activated for a session via
    * `@<name>`. Always resolved (`[]` when none or `POLYGLOT_NO_SKILLS` is set). */
   skills: Skill[];
+  /** Lifecycle hooks - always resolved (all `[]` when none, `POLYGLOT_NO_HOOKS` is set, or a
+   * project file defines them without the global opt-in). */
+  hooks: ResolvedHooks;
   /** Model routing - see SettingsSchema.routing. Always resolved (`failover` defaults to `[]`).
    * Entries are model ids/labels the frontend resolves against `models[]`. */
   routing: { failover: string[]; summaryModel?: string; planModel?: string };
@@ -353,6 +357,27 @@ function resolveRedaction(r: Settings["redaction"]): ResolvedConfig["redaction"]
   };
 }
 
+/** Resolves lifecycle hooks. Project hooks are folded in only when the global config sets
+ * `allowProjectHooks: true`; `POLYGLOT_NO_HOOKS` clears everything. */
+function resolveHooks(
+  globalHooks: Settings["hooks"],
+  projectHooks: Settings["hooks"],
+  env: NodeJS.ProcessEnv,
+): ResolvedHooks {
+  const empty: ResolvedHooks = { preToolUse: [], postToolUse: [], userPromptSubmit: [] };
+  if (env.POLYGLOT_NO_HOOKS === "1" || env.POLYGLOT_NO_HOOKS === "true") return empty;
+
+  const project = globalHooks?.allowProjectHooks ? projectHooks : undefined;
+  return {
+    preToolUse: [...(globalHooks?.preToolUse ?? []), ...(project?.preToolUse ?? [])],
+    postToolUse: [...(globalHooks?.postToolUse ?? []), ...(project?.postToolUse ?? [])],
+    userPromptSubmit: [
+      ...(globalHooks?.userPromptSubmit ?? []),
+      ...(project?.userPromptSubmit ?? []),
+    ],
+  };
+}
+
 /**
  * Merges global (~/.polyglot/settings.json), project (.polyglot/settings.json),
  * and environment variables — later layers win — into a fully resolved config.
@@ -414,5 +439,6 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): R
     projectInstructions: loadProjectInstructions(cwd, env),
     agents: loadAgentDefinitions(cwd, env),
     skills: loadSkills(cwd, env),
+    hooks: resolveHooks(globalSettings.hooks, projectSettings.hooks, env),
   };
 }

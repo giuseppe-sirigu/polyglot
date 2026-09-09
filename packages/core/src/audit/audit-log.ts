@@ -85,6 +85,14 @@ export type AuditEvent =
       model: string;
       attemptedName: string | null;
       message: string;
+    }
+  | {
+      kind: "hook_blocked";
+      at: string;
+      sessionId: string;
+      model: string;
+      event: "preToolUse" | "postToolUse" | "userPromptSubmit";
+      reason: string;
     };
 
 export interface AuditSink {
@@ -189,6 +197,8 @@ export function auditEventFromAgentEvent(
         attemptedName: event.attemptedName,
         message: event.message,
       };
+    case "hook_blocked":
+      return { kind: "hook_blocked", ...base, event: event.event, reason: event.reason };
     default:
       return null;
   }

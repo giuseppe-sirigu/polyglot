@@ -1,5 +1,6 @@
 import type { ScanToolOutput } from "../agent/executor.js";
 import type { AgentDefinition } from "../config/agents.js";
+import type { HookDispatcher } from "../hooks/dispatcher.js";
 import type { PermissionGate } from "../permissions/gate.js";
 import type { ProviderAdapter } from "../providers/types.js";
 import { createAgentTool } from "./agent-tool.js";
@@ -40,6 +41,8 @@ export interface BuildAgentToolsOptions {
    * work is scanned the same way. Recaptured by the recursive closure, so it applies at every
    * depth. */
   scanToolOutput?: ScanToolOutput;
+  /** Lifecycle hooks - forwarded to sub-agents so their tool calls are gated too. */
+  hooks?: HookDispatcher;
 }
 
 const DEFAULT_MAX_DEPTH = 3;
@@ -65,6 +68,7 @@ export function buildAgentTools(opts: BuildAgentToolsOptions, depth = 0): ToolRe
           cwd: opts.cwd,
           baseTools: opts.baseTools,
           scanToolOutput: opts.scanToolOutput,
+          hooks: opts.hooks,
         }),
       );
     }
@@ -81,6 +85,7 @@ export function buildAgentTools(opts: BuildAgentToolsOptions, depth = 0): ToolRe
         projectInstructions: opts.projectInstructions,
         onSubAgentUsage: opts.onSubAgentUsage,
         scanToolOutput: opts.scanToolOutput,
+        hooks: opts.hooks,
         buildSubTools: () => buildAgentTools(opts, depth + 1),
       }),
     );

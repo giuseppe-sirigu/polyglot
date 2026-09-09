@@ -19,6 +19,7 @@ import {
   createAskUserQuestionTool,
   createAuditSink,
   createExitPlanModeTool,
+  createHookDispatcher,
   createProviderAdapter,
   createSession,
   createWebSearchTool,
@@ -205,6 +206,11 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
       }
     : undefined;
 
+  const hookDispatcher = createHookDispatcher(resolved.hooks, {
+    cwd: session.cwd,
+    onWarn: (msg) => process.stderr.write(`[polyglot] hook: ${msg}\n`),
+  });
+
   const tools = buildAgentTools({
     baseTools: [
       readFileTool,
@@ -225,6 +231,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     projectInstructions: resolved.projectInstructions.text,
     agents: resolved.agents,
     scanToolOutput,
+    hooks: hookDispatcher,
     ...(subAgent
       ? {
           subAgentAdapter: subAgent.adapter,
@@ -344,11 +351,43 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
   const fellBackTo: string[] = [];
 
   // `@file` mentions are inlined the same way the interactive frontend does it.
-  const source = agentInvoke
+  let source = agentInvoke
     ? agentInvoke.rest
     : skillActivation?.strippedText
       ? skillActivation.strippedText
       : prompt;
+
+  // userPromptSubmit hooks (not for an agent invocation, which has its own prompt).
+  if (!agentInvoke && hookDispatcher.hasAny("userPromptSubmit")) {
+    const outcome = await hookDispatcher.userPromptSubmit(source);
+    if (outcome.block !== undefined) {
+      process.stderr.write(`[polyglot] userPromptSubmit hook blocked this run: ${outcome.block}\n`);
+      process.off("SIGINT", onSigint);
+      await Promise.all([mcp?.close(), auditSink.close()]);
+      if (json) {
+        process.stdout.write(
+          `${JSON.stringify({
+            result: outcome.block,
+            session_id: session.id,
+            is_error: true,
+            stop_reason: "hook_blocked",
+            persisted: persist,
+            cost_usd: 0,
+            tokens: { input: 0, output: 0 },
+            reliability: { tool_calls: 0, repaired: 0, parse_errors: 0, gave_up: 0 },
+            fell_back_to: [],
+          })}\n`,
+        );
+      } else {
+        process.stdout.write(`${outcome.block}\n`);
+      }
+      return 1;
+    }
+    if (outcome.additionalContext) {
+      source = `${source}\n\n<context>\n${outcome.additionalContext}\n</context>`;
+    }
+  }
+
   const {
     text: turnInput,
     attached,
@@ -374,6 +413,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
       gate,
       signal: controller.signal,
       scanToolOutput,
+      hooks: hookDispatcher,
       failover: agentInvoke ? [] : failoverChain,
       onMessage: persist ? (message) => persistMessage(session.id, message) : undefined,
       onEvent: (event) => {
@@ -415,6 +455,9 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
           case "tool_parse_error":
             process.stderr.write(`  ⎿ tool parse error: ${event.message}\n`);
             sessionReliability = addParseError(sessionReliability, session.model);
+            break;
+          case "hook_blocked":
+            process.stderr.write(`[polyglot] ${event.event} hook blocked: ${event.reason}\n`);
             break;
           case "usage":
             if (event.inputTokens > 0) {

@@ -194,6 +194,41 @@ describe("runAgentTurn structured mode", () => {
     expect(events.some((e) => e.type === "tool_output_findings")).toBe(false);
   });
 
+  it("emits hook_blocked and feeds the reason back to the model when a preToolUse hook blocks", async () => {
+    const tools = buildRegistry();
+    const adapter = fakeStructuredAdapter([
+      JSON.stringify({
+        message: "reading",
+        tool_calls: [{ name: "read_file", arguments: { path: "a.ts" } }],
+      }),
+      JSON.stringify({ message: "ok, stopping", tool_calls: [] }),
+    ]);
+    const events: AgentEvent[] = [];
+    const session = createSession({ cwd: "/tmp", provider: "fake", model: "fake" });
+    await runAgentTurn({
+      session,
+      adapter,
+      userInput: "go",
+      systemPrompt: "system",
+      tools,
+      gate: new AllowAllGate(),
+      signal: new AbortController().signal,
+      onEvent: (e) => events.push(e),
+      hooks: {
+        hasAny: () => true,
+        preToolUse: async () => ({ block: "reads are frozen right now" }),
+        postToolUse: async () => ({}),
+        userPromptSubmit: async () => ({}),
+      },
+    });
+    const blocked = events.find((e) => e.type === "hook_blocked");
+    expect(blocked).toMatchObject({ event: "preToolUse", reason: "reads are frozen right now" });
+    const toolResultMsg = session.messages.find(
+      (m) => m.role === "user" && m.content.includes("tool_result"),
+    );
+    expect(toolResultMsg?.content).toContain("reads are frozen right now");
+  });
+
   it("surfaces a distinct error and stops on malformed JSON, without throwing", async () => {
     const tools = buildRegistry();
     const adapter = fakeStructuredAdapter(["not json at all, just prose"]);

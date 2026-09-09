@@ -14,6 +14,14 @@ export type { Skill } from "./config/skills.js";
 export { executeToolCall } from "./agent/executor.js";
 export type { ScanToolOutput } from "./agent/executor.js";
 export type { AgentEvent } from "./agent/events.js";
+export { createHookDispatcher } from "./hooks/dispatcher.js";
+export type {
+  HookDispatcher,
+  HookEvent,
+  HookOutcome,
+  HookSpec,
+  ResolvedHooks,
+} from "./hooks/dispatcher.js";
 export { scanContent, SECRET_PATTERNS, PII_PATTERNS } from "./permissions/secret-patterns.js";
 export type { ContentFinding, SecretPattern, ScanResult } from "./permissions/secret-patterns.js";
 export { PERSONA, assembleSystemPrompt } from "./agent/system-prompt.js";

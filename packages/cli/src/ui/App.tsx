@@ -29,6 +29,7 @@ import {
   createAskUserQuestionTool,
   createAuditSink,
   createExitPlanModeTool,
+  createHookDispatcher,
   createProviderAdapter,
   createSession,
   createWebSearchTool,
@@ -100,7 +101,7 @@ import {
   reliabilityBadge,
 } from "./reliabilityReport.js";
 import { formatRepairReport } from "./repairReport.js";
-import { formatStatusReport } from "./statusReport.js";
+import { formatHooksLine, formatStatusReport } from "./statusReport.js";
 import { theme } from "./theme.js";
 import { type TranscriptGroup, groupTranscript } from "./toolPairing.js";
 import { reconstructTranscript } from "./transcript.js";
@@ -229,6 +230,17 @@ export function App({
       return { text: out, findings, redacted: redact };
     };
   }, [resolved.redaction]);
+
+  // Lifecycle hooks (preToolUse / postToolUse / userPromptSubmit). One dispatcher per session;
+  // a broken hook's warning goes to the transcript.
+  const hookDispatcher = useMemo(
+    () =>
+      createHookDispatcher(resolved.hooks, {
+        cwd: session.cwd,
+        onWarn: (msg) => pushItem({ kind: "system", tone: "warn", text: `hook: ${msg}` }),
+      }),
+    [session.cwd, resolved.hooks],
+  );
 
   // Candidate list for the `@`-mention file picker - loaded once per cwd, capped, gitignore-aware.
   const [mentionFiles, setMentionFiles] = useState<string[]>([]);
@@ -486,6 +498,7 @@ export function App({
         tools: agentTools,
         signal: controller.signal,
         scanToolOutput,
+        hooks: hookDispatcher,
         onEvent: (event) => {
           if (isStale()) return;
           if (event.type === "text_delta") {
@@ -527,6 +540,13 @@ export function App({
               text: `⚠ ${n} secret-looking value${n === 1 ? "" : "s"} in ${event.name} output (${labels}) - ${
                 event.redacted ? "redacted" : 'not redacted (set redaction.mode: "redact")'
               }`,
+            });
+          }
+          if (event.type === "hook_blocked") {
+            pushItem({
+              kind: "system",
+              tone: "warn",
+              text: `${event.event} hook blocked this: ${event.reason}`,
             });
           }
           if (event.type === "usage" && event.inputTokens > 0) {
@@ -620,6 +640,7 @@ export function App({
       projectInstructions: resolved.projectInstructions.text,
       agents: resolved.agents,
       scanToolOutput,
+      hooks: hookDispatcher,
       ...(subAgent
         ? {
             subAgentAdapter: subAgent.adapter,
@@ -672,6 +693,7 @@ export function App({
     resolved.subAgents,
     subAgent,
     scanToolOutput,
+    hookDispatcher,
   ]);
 
   const systemPrompt = useMemo(
@@ -967,6 +989,7 @@ export function App({
           scanning: resolved.redaction.scanOutput
             ? `${resolved.redaction.mode} tool output${resolved.redaction.pii ? " + pii" : ""}`
             : "off",
+          hooks: formatHooksLine(resolved.hooks),
           sessionId: session.id,
           messageCount: session.messages.length,
           contextUsedPercent,
@@ -1202,6 +1225,24 @@ export function App({
       });
     }
 
+    // userPromptSubmit hooks can block the turn or add context. They see the message as typed
+    // (before @file expansion), matching the "this is the user's prompt" intent.
+    if (hookDispatcher.hasAny("userPromptSubmit")) {
+      const outcome = await hookDispatcher.userPromptSubmit(message);
+      if (outcome.block !== undefined) {
+        pushItem({ kind: "user", text: value });
+        pushItem({
+          kind: "system",
+          tone: "warn",
+          text: `userPromptSubmit hook blocked this: ${outcome.block}`,
+        });
+        return;
+      }
+      if (outcome.additionalContext) {
+        message = `${message}\n\n<context>\n${outcome.additionalContext}\n</context>`;
+      }
+    }
+
     // `@file` mentions are expanded to the file's contents (in a <file> block) just before the
     // turn runs - so a queued message reflects the file at run time, and the model gets it
     // without a read_file round-trip. Secret files are never inlined.
@@ -1270,6 +1311,7 @@ export function App({
         signal: controller.signal,
         failover: failover.chain,
         scanToolOutput,
+        hooks: hookDispatcher,
         onMessage: resolved.persistTranscripts
           ? (message) => persistMessage(session.id, message)
           : undefined,
@@ -1328,6 +1370,13 @@ export function App({
               text: `⚠ ${n} secret-looking value${n === 1 ? "" : "s"} in ${event.name} output (${labels}) - ${
                 event.redacted ? "redacted" : 'not redacted (set redaction.mode: "redact")'
               }`,
+            });
+          }
+          if (event.type === "hook_blocked") {
+            pushItem({
+              kind: "system",
+              tone: "warn",
+              text: `${event.event} hook blocked this: ${event.reason}`,
             });
           }
           if (event.type === "tool_parse_error") {

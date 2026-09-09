@@ -1,6 +1,7 @@
 import type { ScanToolOutput } from "../agent/executor.js";
 import { runSubAgent } from "../agent/sub-agent.js";
 import type { AgentDefinition } from "../config/agents.js";
+import type { HookDispatcher } from "../hooks/dispatcher.js";
 import type { PermissionGate } from "../permissions/gate.js";
 import type { ProviderAdapter } from "../providers/types.js";
 import { buildToolSystemPrompt } from "../tool-protocol/grammar.js";
@@ -17,6 +18,8 @@ export interface AgentToolConfig {
   maxSteps?: number;
   /** Content scanning for the delegated agent's tool output - forwarded from the parent turn. */
   scanToolOutput?: ScanToolOutput;
+  /** Lifecycle hooks - forwarded from the parent turn. */
+  hooks?: HookDispatcher;
 }
 
 const MAX_REPORT_CHARS = 4000;
@@ -66,6 +69,7 @@ export function createAgentTool(agent: AgentDefinition, config: AgentToolConfig)
         maxSteps: config.maxSteps ?? 15,
         signal: ctx.signal,
         scanToolOutput: config.scanToolOutput,
+        hooks: config.hooks,
       });
 
       if (stopReason === "unreliable_model") {

@@ -135,6 +135,14 @@ describe("auditEventFromAgentEvent", () => {
     expect(JSON.stringify(event)).not.toMatch(/AKIA|redacted:/);
   });
 
+  it("records a hook_blocked event", () => {
+    const event = auditEventFromAgentEvent(
+      { type: "hook_blocked", event: "preToolUse", reason: "policy", toolCallId: "tc10" },
+      ctx,
+    );
+    expect(event).toMatchObject({ kind: "hook_blocked", event: "preToolUse", reason: "policy" });
+  });
+
   it("maps permission decisions, usage, stops and parse errors", () => {
     expect(
       auditEventFromAgentEvent(
