@@ -1,3 +1,4 @@
+import type { ScanToolOutput } from "../agent/executor.js";
 import { runSubAgent } from "../agent/sub-agent.js";
 import type { PermissionGate } from "../permissions/gate.js";
 import type { ProviderAdapter } from "../providers/types.js";
@@ -16,6 +17,8 @@ export interface TaskToolConfig {
    * "task" tool if the caller's depth budget allows, or omits it at the depth limit. */
   buildSubTools: () => ToolRegistry;
   maxSteps?: number;
+  /** Content scanning for the sub-agent's tool output - forwarded from the parent turn. */
+  scanToolOutput?: ScanToolOutput;
   /** Forwards each sub-agent turn's token usage to the caller so its cost (on `model`, which
    * may be a cheaper sub-agent model) rolls into the parent session's totals. */
   onSubAgentUsage?: (u: {
@@ -75,6 +78,7 @@ export function createTaskTool(config: TaskToolConfig): ToolDefinition<TaskInput
         tools: subTools,
         maxSteps: config.maxSteps ?? 15,
         signal: ctx.signal,
+        scanToolOutput: config.scanToolOutput,
         onEvent: (event) => {
           if (event.type === "usage" && event.inputTokens > 0) {
             config.onSubAgentUsage?.({

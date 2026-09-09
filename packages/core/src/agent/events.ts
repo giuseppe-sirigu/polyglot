@@ -1,3 +1,5 @@
+import type { ContentFinding } from "../permissions/secret-patterns.js";
+
 export type AgentEvent =
   | { type: "turn_start" }
   | { type: "text_delta"; delta: string }
@@ -16,6 +18,16 @@ export type AgentEvent =
       rawCall?: string;
     }
   | { type: "tool_result"; toolCallId: string; name: string; resultText: string; isError: boolean }
+  // Secret- / PII-looking values found in a tool result by content scanning. `redacted` is
+  // true when the text the model sees was scrubbed (`redaction.mode: "redact"`), false when it
+  // was only flagged (the default). Emitted right after the `tool_result` it refers to.
+  | {
+      type: "tool_output_findings";
+      toolCallId: string;
+      name: string;
+      findings: ContentFinding[];
+      redacted: boolean;
+    }
   | {
       type: "permission_decision";
       toolCallId: string;

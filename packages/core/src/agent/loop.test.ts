@@ -124,6 +124,76 @@ describe("runAgentTurn structured mode", () => {
     expect(events.at(-1)).toEqual({ type: "agent_stop", reason: "done" });
   });
 
+  it("scans tool output: emits tool_output_findings and feeds the scanned text to the model", async () => {
+    const tools = buildRegistry();
+    const adapter = fakeStructuredAdapter([
+      JSON.stringify({
+        message: "reading",
+        tool_calls: [{ name: "read_file", arguments: { path: "a.ts" } }],
+      }),
+      JSON.stringify({ message: "done", tool_calls: [] }),
+    ]);
+    const events: AgentEvent[] = [];
+    const session = createSession({ cwd: "/tmp", provider: "fake", model: "fake" });
+    await runAgentTurn({
+      session,
+      adapter,
+      userInput: "go",
+      systemPrompt: "system",
+      tools,
+      gate: new AllowAllGate(),
+      signal: new AbortController().signal,
+      onEvent: (e) => events.push(e),
+      scanToolOutput: ({ text }) => ({
+        text: text.replace("contents", "[redacted:test]"),
+        findings: [{ label: "test", count: 1 }],
+        redacted: true,
+      }),
+    });
+
+    const idxResult = events.findIndex((e) => e.type === "tool_result");
+    const idxFindings = events.findIndex((e) => e.type === "tool_output_findings");
+    expect(idxResult).toBeGreaterThanOrEqual(0);
+    expect(idxFindings).toBe(idxResult + 1);
+    expect(events[idxFindings]).toMatchObject({
+      type: "tool_output_findings",
+      name: "read_file",
+      findings: [{ label: "test", count: 1 }],
+      redacted: true,
+    });
+    // the tool_result event and the message fed back to the model both carry the scanned text
+    expect(events[idxResult]).toMatchObject({ resultText: "[redacted:test] of a.ts" });
+    const toolResultMsg = session.messages.find(
+      (m) => m.role === "user" && m.content.includes("tool_result"),
+    );
+    expect(toolResultMsg?.content).toContain("[redacted:test] of a.ts");
+    expect(toolResultMsg?.content).not.toContain("contents of a.ts");
+  });
+
+  it("emits no tool_output_findings when the scanner finds nothing", async () => {
+    const tools = buildRegistry();
+    const adapter = fakeStructuredAdapter([
+      JSON.stringify({
+        message: "reading",
+        tool_calls: [{ name: "read_file", arguments: { path: "a.ts" } }],
+      }),
+      JSON.stringify({ message: "done", tool_calls: [] }),
+    ]);
+    const events: AgentEvent[] = [];
+    await runAgentTurn({
+      session: createSession({ cwd: "/tmp", provider: "fake", model: "fake" }),
+      adapter,
+      userInput: "go",
+      systemPrompt: "system",
+      tools,
+      gate: new AllowAllGate(),
+      signal: new AbortController().signal,
+      onEvent: (e) => events.push(e),
+      scanToolOutput: ({ text }) => ({ text, findings: [], redacted: false }),
+    });
+    expect(events.some((e) => e.type === "tool_output_findings")).toBe(false);
+  });
+
   it("surfaces a distinct error and stops on malformed JSON, without throwing", async () => {
     const tools = buildRegistry();
     const adapter = fakeStructuredAdapter(["not json at all, just prose"]);

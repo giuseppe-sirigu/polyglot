@@ -1,3 +1,4 @@
+import type { ScanToolOutput } from "../agent/executor.js";
 import { runSubAgent } from "../agent/sub-agent.js";
 import type { AgentDefinition } from "../config/agents.js";
 import type { PermissionGate } from "../permissions/gate.js";
@@ -14,6 +15,8 @@ export interface AgentToolConfig {
    * includes `task` or other `agent_*` tools - a delegated agent doesn't sub-delegate. */
   baseTools: ToolDefinition[];
   maxSteps?: number;
+  /** Content scanning for the delegated agent's tool output - forwarded from the parent turn. */
+  scanToolOutput?: ScanToolOutput;
 }
 
 const MAX_REPORT_CHARS = 4000;
@@ -62,6 +65,7 @@ export function createAgentTool(agent: AgentDefinition, config: AgentToolConfig)
         tools: allowed,
         maxSteps: config.maxSteps ?? 15,
         signal: ctx.signal,
+        scanToolOutput: config.scanToolOutput,
       });
 
       if (stopReason === "unreliable_model") {

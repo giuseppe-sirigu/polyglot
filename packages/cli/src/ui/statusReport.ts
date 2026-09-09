@@ -20,6 +20,8 @@ export interface StatusReportFields {
   agents: string;
   /** Active skill (with available count), or "none". */
   skill: string;
+  /** Tool-output content scanning: "warn" / "redact" (+ "pii" when on), or "off". */
+  scanning: string;
   sessionId: string;
   messageCount: number;
   contextUsedPercent: number | undefined;
@@ -81,6 +83,7 @@ export function formatStatusReport(f: StatusReportFields): string {
     `  instructions: ${f.instructions}`,
     `  agents:       ${f.agents}`,
     `  skill:        ${f.skill}`,
+    `  scanning:     ${f.scanning}`,
     `  cost:         ${f.cost}`,
     `  reliability:  ${f.reliability}`,
     `  cwd:          ${f.cwd}`,

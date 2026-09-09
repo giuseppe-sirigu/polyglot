@@ -3,6 +3,7 @@ import {
   type McpConnectResult,
   PolicyGate,
   type ResolvedConfig,
+  type ScanToolOutput,
   type Session,
   type Skill,
   addGiveUp,
@@ -38,6 +39,7 @@ import {
   pruneSessions,
   readFileTool,
   runAgentTurn,
+  scanContent,
   turnUsageFromEvent,
   webFetchTool,
   writeFileTool,
@@ -186,6 +188,23 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     );
   }
 
+  if (resolved.redaction.invalidPatterns.length > 0) {
+    process.stderr.write(
+      `[polyglot] redaction.extraPatterns: invalid regex dropped for ${resolved.redaction.invalidPatterns.join(", ")}\n`,
+    );
+  }
+  const rd = resolved.redaction;
+  const scanToolOutput: ScanToolOutput | undefined = rd.scanOutput
+    ? ({ text }) => {
+        const { text: out, findings } = scanContent(text, {
+          redact: rd.mode === "redact",
+          pii: rd.pii,
+          extra: rd.extraPatterns,
+        });
+        return { text: out, findings, redacted: rd.mode === "redact" };
+      }
+    : undefined;
+
   const tools = buildAgentTools({
     baseTools: [
       readFileTool,
@@ -205,6 +224,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     subAgents: resolved.subAgents ?? adapter.capabilities.nativeToolCalling === "reliable",
     projectInstructions: resolved.projectInstructions.text,
     agents: resolved.agents,
+    scanToolOutput,
     ...(subAgent
       ? {
           subAgentAdapter: subAgent.adapter,
@@ -353,6 +373,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
       tools: turnTools,
       gate,
       signal: controller.signal,
+      scanToolOutput,
       failover: agentInvoke ? [] : failoverChain,
       onMessage: persist ? (message) => persistMessage(session.id, message) : undefined,
       onEvent: (event) => {
@@ -381,6 +402,16 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
           case "tool_result":
             if (event.isError) process.stderr.write(`  ⎿ error: ${event.resultText}\n`);
             break;
+          case "tool_output_findings": {
+            const labels = event.findings.map((f) => f.label).join(", ");
+            const n = event.findings.reduce((s, f) => s + f.count, 0);
+            process.stderr.write(
+              `[polyglot] ⚠ ${n} secret-looking value${n === 1 ? "" : "s"} in ${event.name} output (${labels}) - ${
+                event.redacted ? "redacted" : "not redacted"
+              }\n`,
+            );
+            break;
+          }
           case "tool_parse_error":
             process.stderr.write(`  ⎿ tool parse error: ${event.message}\n`);
             sessionReliability = addParseError(sessionReliability, session.model);

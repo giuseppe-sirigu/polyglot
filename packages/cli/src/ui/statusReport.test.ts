@@ -39,6 +39,7 @@ describe("formatStatusReport", () => {
     instructions: "none",
     agents: "none",
     skill: "none",
+    scanning: "warn tool output",
     sessionId: "abc",
     messageCount: 4,
     contextUsedPercent: 12,
@@ -90,6 +91,10 @@ describe("formatStatusReport", () => {
     expect(formatStatusReport({ ...base, skill: "haiku (3 available)" })).toMatch(
       /skill:\s+haiku \(3 available\)/,
     );
+    expect(formatStatusReport({ ...base, scanning: "redact tool output + pii" })).toMatch(
+      /scanning:\s+redact tool output \+ pii/,
+    );
+    expect(formatStatusReport({ ...base, scanning: "off" })).toMatch(/scanning:\s+off/);
   });
 
   it("shows the reliability line verbatim", () => {

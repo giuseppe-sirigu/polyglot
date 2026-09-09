@@ -10,6 +10,7 @@ import {
   PolicyGate,
   type ProviderAdapter,
   type ResolvedConfig,
+  type ScanToolOutput,
   type Session,
   type SessionSummary,
   type Skill,
@@ -55,6 +56,7 @@ import {
   runAgentTurn,
   runSelfUpdate,
   runSubAgent,
+  scanContent,
   serializeSessionHtml,
   serializeSessionMarkdown,
   sessionContextTokens,
@@ -211,6 +213,22 @@ export function App({
     ],
     [resolved.agents, resolved.skills],
   );
+
+  // Scans every tool result for secret- / PII-looking values before it enters context. Built
+  // once from `redaction` settings; unset when scanning is turned off.
+  const scanToolOutput = useMemo<ScanToolOutput | undefined>(() => {
+    const r = resolved.redaction;
+    if (!r.scanOutput) return undefined;
+    const redact = r.mode === "redact";
+    return ({ text }) => {
+      const { text: out, findings } = scanContent(text, {
+        redact,
+        pii: r.pii,
+        extra: r.extraPatterns,
+      });
+      return { text: out, findings, redacted: redact };
+    };
+  }, [resolved.redaction]);
 
   // Candidate list for the `@`-mention file picker - loaded once per cwd, capped, gitignore-aware.
   const [mentionFiles, setMentionFiles] = useState<string[]>([]);
@@ -467,6 +485,7 @@ export function App({
         userInput: agentPrompt,
         tools: agentTools,
         signal: controller.signal,
+        scanToolOutput,
         onEvent: (event) => {
           if (isStale()) return;
           if (event.type === "text_delta") {
@@ -497,6 +516,17 @@ export function App({
               name: event.name,
               resultText: event.resultText,
               isError: event.isError,
+            });
+          }
+          if (event.type === "tool_output_findings") {
+            const labels = event.findings.map((f) => f.label).join(", ");
+            const n = event.findings.reduce((s, f) => s + f.count, 0);
+            pushItem({
+              kind: "system",
+              tone: "warn",
+              text: `⚠ ${n} secret-looking value${n === 1 ? "" : "s"} in ${event.name} output (${labels}) - ${
+                event.redacted ? "redacted" : 'not redacted (set redaction.mode: "redact")'
+              }`,
             });
           }
           if (event.type === "usage" && event.inputTokens > 0) {
@@ -589,6 +619,7 @@ export function App({
       subAgents: resolved.subAgents ?? activeAdapter.capabilities.nativeToolCalling === "reliable",
       projectInstructions: resolved.projectInstructions.text,
       agents: resolved.agents,
+      scanToolOutput,
       ...(subAgent
         ? {
             subAgentAdapter: subAgent.adapter,
@@ -633,7 +664,15 @@ export function App({
       ),
     );
     return built;
-  }, [activeAdapter, activeModel.model, session.cwd, session.id, resolved.subAgents, subAgent]);
+  }, [
+    activeAdapter,
+    activeModel.model,
+    session.cwd,
+    session.id,
+    resolved.subAgents,
+    subAgent,
+    scanToolOutput,
+  ]);
 
   const systemPrompt = useMemo(
     () =>
@@ -677,6 +716,13 @@ export function App({
     startedRef.current = true;
     if (probeNote) {
       pushItem({ kind: "system", tone: "info", text: probeNote });
+    }
+    if (resolved.redaction.invalidPatterns.length > 0) {
+      pushItem({
+        kind: "system",
+        tone: "warn",
+        text: `redaction.extraPatterns: invalid regex dropped for ${resolved.redaction.invalidPatterns.join(", ")}`,
+      });
     }
     if (resumed) {
       pushItem({
@@ -918,6 +964,9 @@ export function App({
             : resolved.skills.length > 0
               ? `none (${resolved.skills.length} available)`
               : "none",
+          scanning: resolved.redaction.scanOutput
+            ? `${resolved.redaction.mode} tool output${resolved.redaction.pii ? " + pii" : ""}`
+            : "off",
           sessionId: session.id,
           messageCount: session.messages.length,
           contextUsedPercent,
@@ -1220,6 +1269,7 @@ export function App({
         gate,
         signal: controller.signal,
         failover: failover.chain,
+        scanToolOutput,
         onMessage: resolved.persistTranscripts
           ? (message) => persistMessage(session.id, message)
           : undefined,
@@ -1267,6 +1317,17 @@ export function App({
               name: event.name,
               resultText: event.resultText,
               isError: event.isError,
+            });
+          }
+          if (event.type === "tool_output_findings") {
+            const labels = event.findings.map((f) => f.label).join(", ");
+            const n = event.findings.reduce((s, f) => s + f.count, 0);
+            pushItem({
+              kind: "system",
+              tone: "warn",
+              text: `⚠ ${n} secret-looking value${n === 1 ? "" : "s"} in ${event.name} output (${labels}) - ${
+                event.redacted ? "redacted" : 'not redacted (set redaction.mode: "redact")'
+              }`,
             });
           }
           if (event.type === "tool_parse_error") {

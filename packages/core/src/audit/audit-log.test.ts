@@ -115,6 +115,26 @@ describe("auditEventFromAgentEvent", () => {
     });
   });
 
+  it("records content findings as labels and counts only, never the matched text", () => {
+    const event = auditEventFromAgentEvent(
+      {
+        type: "tool_output_findings",
+        toolCallId: "tc9",
+        name: "bash",
+        findings: [{ label: "aws-key", count: 2 }],
+        redacted: true,
+      },
+      ctx,
+    );
+    expect(event).toMatchObject({
+      kind: "content_findings",
+      toolName: "bash",
+      findings: [{ label: "aws-key", count: 2 }],
+      redacted: true,
+    });
+    expect(JSON.stringify(event)).not.toMatch(/AKIA|redacted:/);
+  });
+
   it("maps permission decisions, usage, stops and parse errors", () => {
     expect(
       auditEventFromAgentEvent(

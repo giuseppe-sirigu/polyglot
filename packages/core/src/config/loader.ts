@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import type { SecretPattern } from "../permissions/secret-patterns.js";
 import type { ModelPricing } from "../pricing/pricing.js";
 import type { WebSearchConfig } from "../tools/web-search.js";
 import { type AgentDefinition, loadAgentDefinitions } from "./agents.js";
@@ -45,6 +46,16 @@ export interface ResolvedConfig {
   retentionDays?: number;
   /** Backend for the `web_search` tool — always resolved (defaults to `duckduckgo`). */
   webSearch: WebSearchConfig;
+  /** Content scanning of tool output — always resolved (`scanOutput: true`, `mode: "warn"`,
+   * `pii: false` when unset). `extraPatterns` are already compiled; ones that didn't compile
+   * are named in `invalidPatterns` for the frontend to warn about. */
+  redaction: {
+    scanOutput: boolean;
+    mode: "warn" | "redact";
+    pii: boolean;
+    extraPatterns: SecretPattern[];
+    invalidPatterns: string[];
+  };
   /** `AGENTS.md` / `POLYGLOT.md` contents (project + global), spliced into the system prompt.
    * Always resolved (empty when no file exists or `POLYGLOT_NO_INSTRUCTIONS` is set). */
   projectInstructions: ProjectInstructions;
@@ -177,6 +188,22 @@ function mergeSettings(base: Settings, override: Settings): Settings {
             baseURL: override.webSearch?.baseURL ?? base.webSearch?.baseURL,
           }
         : undefined,
+    redaction:
+      base.redaction || override.redaction
+        ? {
+            scanOutput: override.redaction?.scanOutput ?? base.redaction?.scanOutput,
+            mode: override.redaction?.mode ?? base.redaction?.mode,
+            pii: override.redaction?.pii ?? base.redaction?.pii,
+            // Project patterns extend the global set rather than replacing it.
+            extraPatterns:
+              base.redaction?.extraPatterns || override.redaction?.extraPatterns
+                ? [
+                    ...(base.redaction?.extraPatterns ?? []),
+                    ...(override.redaction?.extraPatterns ?? []),
+                  ]
+                : undefined,
+          }
+        : undefined,
     routing:
       base.routing || override.routing
         ? {
@@ -229,6 +256,19 @@ function applyEnvOverrides(settings: Settings, env: NodeJS.ProcessEnv): Settings
     env.POLYGLOT_NO_PERSIST === "true" || env.POLYGLOT_NO_PERSIST === "1"
       ? false
       : settings.persistTranscripts;
+
+  const noOutputScan =
+    env.POLYGLOT_NO_OUTPUT_SCAN === "true" || env.POLYGLOT_NO_OUTPUT_SCAN === "1";
+  const redactOutput = env.POLYGLOT_REDACT_OUTPUT === "true" || env.POLYGLOT_REDACT_OUTPUT === "1";
+  const redaction =
+    settings.redaction || noOutputScan || redactOutput
+      ? {
+          scanOutput: noOutputScan ? false : settings.redaction?.scanOutput,
+          mode: redactOutput ? ("redact" as const) : settings.redaction?.mode,
+          pii: settings.redaction?.pii,
+          extraPatterns: settings.redaction?.extraPatterns,
+        }
+      : undefined;
   const parsedRetention = Number.parseInt(env.POLYGLOT_RETENTION_DAYS ?? "", 10);
   const retentionDays =
     Number.isInteger(parsedRetention) && parsedRetention > 0
@@ -284,10 +324,32 @@ function applyEnvOverrides(settings: Settings, env: NodeJS.ProcessEnv): Settings
     persistTranscripts,
     retentionDays,
     webSearch,
+    redaction,
     routing,
     models: settings.models,
     permissions: { ...settings.permissions, mode },
     mcpServers: settings.mcpServers,
+  };
+}
+
+/** Resolves the `redaction` block to effective values and compiles `extraPatterns` (dropping
+ * any whose regex doesn't compile - their labels come back in `invalidPatterns`). */
+function resolveRedaction(r: Settings["redaction"]): ResolvedConfig["redaction"] {
+  const extraPatterns: SecretPattern[] = [];
+  const invalidPatterns: string[] = [];
+  for (const p of r?.extraPatterns ?? []) {
+    try {
+      extraPatterns.push({ label: p.label, re: new RegExp(p.regex, "g") });
+    } catch {
+      invalidPatterns.push(p.label);
+    }
+  }
+  return {
+    scanOutput: r?.scanOutput ?? true,
+    mode: r?.mode ?? "warn",
+    pii: r?.pii ?? false,
+    extraPatterns,
+    invalidPatterns,
   };
 }
 
@@ -343,6 +405,7 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): R
       apiKey: merged.webSearch?.apiKey,
       baseURL: merged.webSearch?.baseURL,
     },
+    redaction: resolveRedaction(merged.redaction),
     routing: {
       failover: merged.routing?.failover ?? [],
       summaryModel: merged.routing?.summaryModel,

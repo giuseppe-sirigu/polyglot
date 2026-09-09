@@ -182,6 +182,59 @@ describe("loadConfig audit", () => {
   });
 });
 
+describe("loadConfig redaction", () => {
+  const base = { provider: "openai-compatible", model: "m" };
+
+  it("defaults to scanning on, warn mode, pii off, no extra patterns", () => {
+    expect(loadWithSettings(base, null).redaction).toEqual({
+      scanOutput: true,
+      mode: "warn",
+      pii: false,
+      extraPatterns: [],
+      invalidPatterns: [],
+    });
+  });
+
+  it("resolves settings and layers project over global; project patterns extend the set", () => {
+    const config = loadWithSettings(
+      {
+        ...base,
+        redaction: { mode: "redact", extraPatterns: [{ label: "g", regex: "AAA" }] },
+      },
+      { redaction: { pii: true, extraPatterns: [{ label: "p", regex: "BBB" }] } },
+    );
+    expect(config.redaction.mode).toBe("redact");
+    expect(config.redaction.pii).toBe(true);
+    expect(config.redaction.extraPatterns.map((p) => p.label)).toEqual(["g", "p"]);
+  });
+
+  it("POLYGLOT_NO_OUTPUT_SCAN turns scanning off; POLYGLOT_REDACT_OUTPUT forces redact mode", () => {
+    expect(
+      loadWithSettings(base, null, { POLYGLOT_NO_OUTPUT_SCAN: "1" }).redaction.scanOutput,
+    ).toBe(false);
+    expect(loadWithSettings(base, null, { POLYGLOT_REDACT_OUTPUT: "1" }).redaction.mode).toBe(
+      "redact",
+    );
+  });
+
+  it("drops an extraPattern whose regex does not compile, naming it in invalidPatterns", () => {
+    const config = loadWithSettings(
+      {
+        ...base,
+        redaction: {
+          extraPatterns: [
+            { label: "ok", regex: "\\d+" },
+            { label: "bad", regex: "(" },
+          ],
+        },
+      },
+      null,
+    );
+    expect(config.redaction.extraPatterns.map((p) => p.label)).toEqual(["ok"]);
+    expect(config.redaction.invalidPatterns).toEqual(["bad"]);
+  });
+});
+
 describe("loadConfig routing", () => {
   const base = { provider: "openai-compatible", model: "m" };
 
