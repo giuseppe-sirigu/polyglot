@@ -12,7 +12,10 @@ export type { AgentDefinition } from "./config/agents.js";
 export { loadSkills } from "./config/skills.js";
 export type { Skill } from "./config/skills.js";
 export { executeToolCall } from "./agent/executor.js";
+export type { ScanToolOutput } from "./agent/executor.js";
 export type { AgentEvent } from "./agent/events.js";
+export { scanContent, SECRET_PATTERNS, PII_PATTERNS } from "./permissions/secret-patterns.js";
+export type { ContentFinding, SecretPattern, ScanResult } from "./permissions/secret-patterns.js";
 export { PERSONA, assembleSystemPrompt } from "./agent/system-prompt.js";
 export {
   createAuditSink,

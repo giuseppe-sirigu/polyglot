@@ -14,7 +14,7 @@ import type {
 } from "../tool-protocol/types.js";
 import type { ToolRegistry } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
-import { executeToolCall } from "./executor.js";
+import { type ScanToolOutput, executeToolCall } from "./executor.js";
 
 /** A model to fall back to when the active one fails mid-turn. The caller pre-resolves the
  * model and hands over a thunk for the adapter (built lazily / memoized so a chain that never
@@ -52,6 +52,10 @@ export interface RunAgentTurnOptions {
   failover?: FailoverModel[];
   /** Rebuilds the system prompt after a failover, for the new model's tool-call protocol. */
   buildSystemPrompt?: (ctx: { structured: boolean }) => string;
+  /** Scans every tool result for secret- / PII-looking values before it enters the model's
+   * context (and the transcript / audit log). Built from `redaction` settings by the frontend;
+   * unset = no scanning. */
+  scanToolOutput?: ScanToolOutput;
 }
 
 const DEFAULT_MAX_STEPS = 25;
@@ -353,6 +357,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
           cwd: session.cwd,
           sessionId: session.id,
           signal,
+          scanOutput: opts.scanToolOutput,
         }).then((executed) => {
           onEvent({
             type: "permission_decision",
@@ -368,6 +373,15 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
             resultText: executed.resultText,
             isError: executed.isError,
           });
+          if (executed.findings && executed.findings.length > 0) {
+            onEvent({
+              type: "tool_output_findings",
+              toolCallId,
+              name: executed.toolName,
+              findings: executed.findings,
+              redacted: executed.redacted ?? false,
+            });
+          }
           return {
             resultBlock: formatToolResultBlock(
               executed.toolName,

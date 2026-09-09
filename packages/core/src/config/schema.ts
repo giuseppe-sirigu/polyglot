@@ -97,6 +97,24 @@ export const SettingsSchema = z.object({
       path: z.string().optional(),
     })
     .optional(),
+  /** Content scanning of tool output for secret- / PII-looking values before it reaches the
+   * model. Sub-fields left without schema defaults so layered configs can tell "unset" from
+   * "set" - effective defaults (scanOutput: true, mode: "warn", pii: false) applied in
+   * loader.ts. */
+  redaction: z
+    .object({
+      /** Scan every tool result. Default true. */
+      scanOutput: z.boolean().optional(),
+      /** "warn" flags findings but leaves the text the model sees unchanged; "redact" replaces
+       * matches with `[redacted:<label>]`. Default "warn". */
+      mode: z.enum(["warn", "redact"]).optional(),
+      /** Also scan for the noisier PII formats (email, US SSN, card, phone). Default false. */
+      pii: z.boolean().optional(),
+      /** Extra patterns, each a `label` and a JS `regex` source string (compiled with the `g`
+       * flag; an invalid one is dropped with a warning, never fatal). */
+      extraPatterns: z.array(z.object({ label: z.string(), regex: z.string() })).optional(),
+    })
+    .optional(),
   /** Model routing. All entries are model ids/labels resolved against `models[]` (or the
    * startup model), the same way `/model <query>` matches. Left without schema defaults so
    * layered configs can tell "unset" from "set" - `failover` defaults to `[]` in loader.ts. */

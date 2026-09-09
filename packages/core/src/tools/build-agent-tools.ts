@@ -1,3 +1,4 @@
+import type { ScanToolOutput } from "../agent/executor.js";
 import type { AgentDefinition } from "../config/agents.js";
 import type { PermissionGate } from "../permissions/gate.js";
 import type { ProviderAdapter } from "../providers/types.js";
@@ -35,6 +36,10 @@ export interface BuildAgentToolsOptions {
     outputTokens: number;
     cachedInputTokens?: number;
   }) => void;
+  /** Content scanning for sub-agent tool output - forwarded from the parent turn so delegated
+   * work is scanned the same way. Recaptured by the recursive closure, so it applies at every
+   * depth. */
+  scanToolOutput?: ScanToolOutput;
 }
 
 const DEFAULT_MAX_DEPTH = 3;
@@ -59,6 +64,7 @@ export function buildAgentTools(opts: BuildAgentToolsOptions, depth = 0): ToolRe
           gate: opts.gate,
           cwd: opts.cwd,
           baseTools: opts.baseTools,
+          scanToolOutput: opts.scanToolOutput,
         }),
       );
     }
@@ -74,6 +80,7 @@ export function buildAgentTools(opts: BuildAgentToolsOptions, depth = 0): ToolRe
         cwd: opts.cwd,
         projectInstructions: opts.projectInstructions,
         onSubAgentUsage: opts.onSubAgentUsage,
+        scanToolOutput: opts.scanToolOutput,
         buildSubTools: () => buildAgentTools(opts, depth + 1),
       }),
     );

@@ -3,6 +3,7 @@ import type { ProviderAdapter } from "../providers/types.js";
 import { createSession } from "../session/types.js";
 import type { ToolRegistry } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
+import type { ScanToolOutput } from "./executor.js";
 import { runAgentTurn } from "./loop.js";
 
 export interface RunSubAgentOptions {
@@ -20,6 +21,9 @@ export interface RunSubAgentOptions {
   signal: AbortSignal;
   /** Every event from the sub-run - so a caller can stream text / tool activity / usage. */
   onEvent?: (event: AgentEvent) => void;
+  /** Content scanning for the sub-run's tool output - forwarded so delegated work gets the
+   * same treatment as the main turn. */
+  scanToolOutput?: ScanToolOutput;
 }
 
 export interface SubAgentResult {
@@ -52,6 +56,7 @@ export async function runSubAgent(opts: RunSubAgentOptions): Promise<SubAgentRes
     gate: opts.gate,
     signal: opts.signal,
     maxSteps: opts.maxSteps ?? 15,
+    scanToolOutput: opts.scanToolOutput,
     onEvent: (event) => {
       if (event.type === "text_delta") text += event.delta;
       if (event.type === "agent_stop") stopReason = event.reason;

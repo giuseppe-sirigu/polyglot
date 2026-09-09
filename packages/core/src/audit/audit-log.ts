@@ -43,6 +43,18 @@ export type AuditEvent =
       resultHash: string;
     }
   | {
+      kind: "content_findings";
+      at: string;
+      sessionId: string;
+      model: string;
+      toolName: string;
+      /** Pattern labels and hit counts only - never the matched text, so the log stays safe
+       * to ship off-machine even in warn mode. */
+      findings: { label: string; count: number }[];
+      /** Whether the text the model saw was scrubbed (redact mode) or just flagged (warn). */
+      redacted: boolean;
+    }
+  | {
       kind: "permission_decision";
       at: string;
       sessionId: string;
@@ -144,6 +156,14 @@ export function auditEventFromAgentEvent(
         isError: event.isError,
         resultBytes: Buffer.byteLength(event.resultText, "utf8"),
         resultHash: sha256(event.resultText),
+      };
+    case "tool_output_findings":
+      return {
+        kind: "content_findings",
+        ...base,
+        toolName: event.name,
+        findings: event.findings,
+        redacted: event.redacted,
       };
     case "permission_decision":
       return {
