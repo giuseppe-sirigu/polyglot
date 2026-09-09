@@ -1,5 +1,16 @@
 # @usepolyglot/cli
 
+## 0.9.0
+
+### Minor Changes
+
+- 58ea1a4: Lifecycle hooks. Add a `hooks` block to settings.json to run your own shell commands at three points: `preToolUse` (inspect a tool call and block it), `postToolUse` (inspect a result and block it), and `userPromptSubmit` (block a prompt or add context to it). A hook gets a JSON payload on stdin and `POLYGLOT_HOOK_EVENT` in its env; exit 0 proceeds, exit 2 blocks (stderr becomes the reason the model sees), and an optional stdout JSON `{ "decision": "block", "reason": "…", "additionalContext": "…" }` gives structured control. `preToolUse` / `postToolUse` entries can be scoped to specific tools with a `tools` glob list. Hooks run for sub-agents too. Project-local hooks (`.polyglot/settings.json`) are ignored unless the global config sets `hooks.allowProjectHooks: true` — running polyglot in an untrusted repo must not execute its shell. A broken hook fails open with a warning; `POLYGLOT_NO_HOOKS=1` disables all. `/status` shows the hook counts.
+- ec42c02: Polyglot now scans the output of every tool call — shell commands, file reads, web fetches, MCP tools — for secret-looking values (API keys, tokens, private keys, `KEY=…` assignments) before it reaches the model, and flags what it finds in the transcript and the audit log. It's on by default in warn mode: the text the model sees is unchanged, you just get a `⚠ 1 secret-looking value in bash output (aws-key)` line. Set `redaction.mode: "redact"` (or `POLYGLOT_REDACT_OUTPUT=1`) to replace matches with `[redacted:<label>]` before they enter context; `redaction.pii: true` adds email / SSN / card / phone detection; `redaction.extraPatterns` adds your own; `POLYGLOT_NO_OUTPUT_SCAN=1` turns it off. `/status` shows the current mode. This is content-based and complements the existing path-based protection (a secret-*named* file still prompts for approval first).
+
+### Patch Changes
+
+- a111dfc: Security: bump the transitive `hono` dependency (via `@modelcontextprotocol/sdk`) to `4.13.7`, clearing three moderate advisories (`toSSG` path traversal, `parseBody` memory exhaustion, query-parser fragment handling) — none of which polyglot exercises, but they showed up in `pnpm audit`. Also moves the dev-only `vitest` to `4.1.11` for GHSA-82fw-gwwq-j7x9 (path traversal via `@vitest/mocker` redirect mocks; polyglot's tests use none). No runtime behaviour change.
+
 ## 0.8.0
 
 ### Minor Changes
