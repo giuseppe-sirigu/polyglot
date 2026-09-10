@@ -120,6 +120,17 @@ export {
 } from "./session/serialize.js";
 export type { ToolResultBlock, TurnItem } from "./session/serialize.js";
 export { redactSecrets } from "./session/redact.js";
+export { replaySession } from "./testing/replay.js";
+export type {
+  ReplayReport,
+  ReplayOptions,
+  TurnReplay,
+  ReplayCall,
+  ReplayParseError,
+} from "./testing/replay.js";
+export { runScenario, DEFAULT_SCENARIO_TOOLS } from "./testing/agent-scenario.js";
+export type { ScenarioResult, RunScenarioOptions } from "./testing/agent-scenario.js";
+export { invariants as scenarioInvariants } from "./testing/invariants.js";
 export {
   emptyUsageTotals,
   addTurnUsage,

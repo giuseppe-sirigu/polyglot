@@ -36,6 +36,20 @@ export interface CliArgs {
   shareRedact: boolean;
   /** Include full tool-call args and result bodies (default one-line summaries). */
   shareFull: boolean;
+  /** `polyglot replay`: re-run a saved session against the current build and exit. */
+  replay: boolean;
+  /** Session id or `.jsonl` path to replay; undefined = most recent. */
+  replayTarget?: string;
+  /** Re-run the whole agent loop (temp working dir) instead of just re-resolving tool calls. */
+  replayExecute: boolean;
+  /** Directory whose files seed the temp working dir for an `--execute` replay. */
+  replaySeed?: string;
+  /** Force the tool-call transport: true = structured, false = free-text, undefined = detect. */
+  replayStructured?: boolean;
+  /** Write the session out as a committed regression fixture under this name. */
+  replaySave?: string;
+  /** `replay` output: "text" (default) or "json". */
+  replayOutputFormat: OutputFormat;
 }
 
 export const HELP_TEXT = `polyglot - a model-agnostic coding-agent CLI
@@ -44,6 +58,7 @@ Usage:
   polyglot [options]                 start the interactive TUI
   polyglot init                      interactive first-run setup (writes ~/.polyglot/settings.json)
   polyglot share [id|path] [opts]    export a session transcript to a file
+  polyglot replay [id|path] [opts]   re-run a saved session against the current build
   polyglot -p "<prompt>" [options]   run one prompt, print the answer, exit
   echo "<prompt>" | polyglot -p      read the prompt from stdin
 
@@ -63,6 +78,14 @@ share options:
       --format <md|html>        output format (default md)
       --no-redact               do not scrub secret-looking values (default: scrub)
       --full                    include full tool-call args and result bodies
+
+replay options:
+      --execute                 re-run the whole agent loop, not just tool-call resolution
+      --seed <dir>              seed the temp working dir from this directory (for --execute)
+      --structured              force the structured tool-call transport
+      --free-text               force the free-text tool-call transport
+      --save <name>             write the session out as a committed regression fixture
+      --output-format <fmt>     "text" (default) or "json"
 
 In print mode the session id is written to stderr (and included in the JSON
 envelope) so it can be chained with --resume.`;
@@ -86,6 +109,9 @@ export function parseCliArgs(argv: string[]): CliArgs {
     shareFormat: "md",
     shareRedact: true,
     shareFull: false,
+    replay: false,
+    replayExecute: false,
+    replayOutputFormat: "text",
   };
   const positional: string[] = [];
 
@@ -109,6 +135,28 @@ export function parseCliArgs(argv: string[]): CliArgs {
       else if (arg === "--full") args.shareFull = true;
       else if (arg.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
       else args.shareTarget = arg;
+    }
+    return args;
+  }
+
+  // `replay` subcommand: `polyglot replay [id|path] [--execute] [--seed dir] [--structured|--free-text] [--save name] [--output-format fmt]`
+  if (argv[0] === "replay") {
+    args.replay = true;
+    for (let i = 1; i < argv.length; i++) {
+      const arg = argv[i] as string;
+      if (arg === "--execute") args.replayExecute = true;
+      else if (arg === "--seed") args.replaySeed = argv[++i];
+      else if (arg === "--structured") args.replayStructured = true;
+      else if (arg === "--free-text") args.replayStructured = false;
+      else if (arg === "--save") args.replaySave = argv[++i];
+      else if (arg === "--output-format") {
+        const v = argv[++i];
+        if (!v || !OUTPUT_FORMATS.includes(v as OutputFormat)) {
+          throw new Error(`--output-format must be one of: ${OUTPUT_FORMATS.join(", ")}`);
+        }
+        args.replayOutputFormat = v as OutputFormat;
+      } else if (arg.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
+      else args.replayTarget = arg;
     }
     return args;
   }

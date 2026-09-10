@@ -21,6 +21,9 @@ const baseArgs: CliArgs = {
   shareFormat: "md",
   shareRedact: true,
   shareFull: false,
+  replay: false,
+  replayExecute: false,
+  replayOutputFormat: "text",
 };
 
 let home: string;

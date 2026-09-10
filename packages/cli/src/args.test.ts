@@ -137,6 +137,50 @@ describe("parseCliArgs", () => {
     });
   });
 
+  describe("replay subcommand", () => {
+    it("recognises `replay` only as the first token", () => {
+      expect(parseCliArgs(["replay"]).replay).toBe(true);
+      expect(parseCliArgs(["-p", "replay"]).replay).toBe(false);
+    });
+
+    it("parses the target and every option", () => {
+      const args = parseCliArgs([
+        "replay",
+        "sess-1",
+        "--execute",
+        "--seed",
+        "./fixtures",
+        "--free-text",
+        "--output-format",
+        "json",
+      ]);
+      expect(args).toMatchObject({
+        replay: true,
+        replayTarget: "sess-1",
+        replayExecute: true,
+        replaySeed: "./fixtures",
+        replayStructured: false,
+        replayOutputFormat: "json",
+      });
+    });
+
+    it("--structured and --save", () => {
+      const args = parseCliArgs(["replay", "--structured", "--save", "my-fixture"]);
+      expect(args.replayStructured).toBe(true);
+      expect(args.replaySave).toBe("my-fixture");
+    });
+
+    it("defaults to parse-level text output", () => {
+      const args = parseCliArgs(["replay"]);
+      expect(args).toMatchObject({ replayExecute: false, replayOutputFormat: "text" });
+      expect(args.replayStructured).toBeUndefined();
+    });
+
+    it("rejects a bad --output-format", () => {
+      expect(() => parseCliArgs(["replay", "--output-format", "xml"])).toThrow(/--output-format/);
+    });
+  });
+
   it("parses --help and --version", () => {
     expect(parseCliArgs(["--help"]).help).toBe(true);
     expect(parseCliArgs(["-h"]).help).toBe(true);

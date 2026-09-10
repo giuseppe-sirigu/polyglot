@@ -1,0 +1,22 @@
+{
+  "name": "edit-file-raw-newlines-in-body",
+  "capturedFrom": "scenario add-count-command / qwen2.5-coder:7b class / realistic",
+  "structured": false,
+  "userInput": "Add a \"count\" command to todo.mjs that prints the number of todos.",
+  "completions": [
+    "<tool_call name=\"edit_file\">\n{\"path\": \"todo.mjs\", \"old_string\": \"switch (cmd) {\n  case \"list\":\n    console.log(\"todos\");\n    break;\n}\", \"new_string\": \"switch (cmd) {\n  case \"list\":\n    console.log(\"todos\");\n    break;\n  case \"count\":\n    console.log(todos.length);\n    break;\n}\"}\n</tool_call>"
+  ],
+  "expect": {
+    "resolvedToolCalls": [
+      {
+        "name": "edit_file",
+        "input": {
+          "path": "todo.mjs",
+          "old_string": "switch (cmd) {\n  case \"list\":\n    console.log(\"todos\");\n    break;\n}",
+          "new_string": "switch (cmd) {\n  case \"list\":\n    console.log(\"todos\");\n    break;\n  case \"count\":\n    console.log(todos.length);\n    break;\n}"
+        }
+      }
+    ],
+    "noParseErrors": true
+  }
+}

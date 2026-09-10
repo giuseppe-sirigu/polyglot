@@ -1,0 +1,22 @@
+{
+  "name": "edit-file-split-object-body",
+  "capturedFrom": "scenario fix-bug / qwen2.5-coder:7b class / realistic",
+  "structured": false,
+  "userInput": "Fix the off-by-one in sum.mjs.",
+  "completions": [
+    "<tool_call name=\"edit_file\">\n{\"path\": \"sum.mjs\", \"old_string\": \"for (let i = 1; i < nums.length; i++)\"}\n{\"new_string\": \"for (let i = 0; i < nums.length; i++)\"}\n</tool_call>"
+  ],
+  "expect": {
+    "resolvedToolCalls": [
+      {
+        "name": "edit_file",
+        "input": {
+          "path": "sum.mjs",
+          "old_string": "for (let i = 1; i < nums.length; i++)",
+          "new_string": "for (let i = 0; i < nums.length; i++)"
+        }
+      }
+    ],
+    "noParseErrors": true
+  }
+}
