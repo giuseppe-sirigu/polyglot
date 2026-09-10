@@ -157,4 +157,76 @@ export const SCENARIOS: Scenario[] = [
       "Removed the unused() function.",
     ],
   },
+
+  // Harder scenarios: multi-file reasoning and longer tool chains (5-6 steps). These are where
+  // "keep the agent loop alive on a weak model" is actually tested - a single dropped or
+  // unrepairable tool call several steps in kills the whole task.
+  {
+    name: "rename-across-files",
+    description: "Rename an exported function and update its importer, across two files.",
+    files: {
+      "math.mjs": "export function add(a, b) {\n  return a + b;\n}\n",
+      "main.mjs": 'import { add } from "./math.mjs";\n\nconsole.log(add(2, 3));\n',
+    },
+    userInput:
+      'Rename the exported "add" function in math.mjs to "sum" and update main.mjs to match, then run main.mjs to check it still works.',
+    invariants: [...UNIVERSAL, INV.shellFailuresSurfaced],
+    taskDone: (r) => {
+      const math = r.readWorkFile("math.mjs") ?? "";
+      const main = r.readWorkFile("main.mjs") ?? "";
+      return (
+        /export function sum\(/.test(math) &&
+        !/function add\(/.test(math) &&
+        /\bsum\b/.test(main) &&
+        !/\badd\(/.test(main)
+      );
+    },
+    goldenTurns: [
+      xml("read_file", { path: "math.mjs" }),
+      xml("read_file", { path: "main.mjs" }),
+      xml("edit_file", {
+        path: "math.mjs",
+        old_string: "export function add(a, b) {",
+        new_string: "export function sum(a, b) {",
+      }),
+      xml("edit_file", {
+        path: "main.mjs",
+        old_string: 'import { add } from "./math.mjs";\n\nconsole.log(add(2, 3));',
+        new_string: 'import { sum } from "./math.mjs";\n\nconsole.log(sum(2, 3));',
+      }),
+      xml("bash", { command: "node main.mjs" }),
+      "Renamed `add` to `sum` in math.mjs and updated the import and call site in main.mjs. `node main.mjs` still prints 5.",
+    ],
+  },
+
+  {
+    name: "locate-and-fix",
+    description: "Trace a runtime ReferenceError across files to a typo'd call and fix it.",
+    files: {
+      "utils.mjs": "export function formatName(first, last) {\n  return `${last}, ${first}`;\n}\n",
+      "greet.mjs":
+        'import { formatName } from "./utils.mjs";\n\nexport function greet(first, last) {\n  return `Hello, ${fmtName(first, last)}!`;\n}\n',
+      "main.mjs":
+        'import { greet } from "./greet.mjs";\n\nconsole.log(greet("Ada", "Lovelace"));\n',
+    },
+    userInput:
+      "`node main.mjs` throws a ReferenceError. Find the cause and fix it, then verify it runs.",
+    invariants: [...UNIVERSAL, INV.shellFailuresSurfaced],
+    taskDone: (r) => {
+      const greet = r.readWorkFile("greet.mjs") ?? "";
+      return /formatName\(first, last\)/.test(greet) && !/fmtName/.test(greet);
+    },
+    goldenTurns: [
+      xml("bash", { command: "node main.mjs" }),
+      xml("grep", { pattern: "fmtName" }),
+      xml("read_file", { path: "greet.mjs" }),
+      xml("edit_file", {
+        path: "greet.mjs",
+        old_string: "fmtName(first, last)",
+        new_string: "formatName(first, last)",
+      }),
+      xml("bash", { command: "node main.mjs" }),
+      'greet.mjs called `fmtName` instead of the imported `formatName` - a typo. Fixed and verified: `node main.mjs` now prints "Hello, Lovelace, Ada!".',
+    ],
+  },
 ];
