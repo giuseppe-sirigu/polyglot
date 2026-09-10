@@ -1,0 +1,18 @@
+{
+  "name": "tool-name-near-miss",
+  "capturedFrom": "scenario read-and-report / llama3.2:3b class / realistic",
+  "structured": false,
+  "userInput": "What port does service.json configure?",
+  "completions": ["<tool_call name=\"read_fil\">\n{\"path\": \"service.json\"}\n</tool_call>"],
+  "expect": {
+    "resolvedToolCalls": [
+      {
+        "name": "read_file",
+        "input": {
+          "path": "service.json"
+        }
+      }
+    ],
+    "noParseErrors": true
+  }
+}

@@ -25,7 +25,7 @@ packages/
       permissions/     # manual/auto/plan permission gate
       session/         # session types, JSONL persistence, context compaction
       config/          # settings.json schema + global/project/env merge
-      testing/         # scenario harness (runScenario), invariants, scenario suite - test-only
+      testing/         # scenario harness (runScenario), invariants, scenario suite, session replay + regression fixtures
   cli/     # @usepolyglot/cli - Ink-based terminal UI frontend
 branding/  # logo assets
 ```
@@ -75,6 +75,25 @@ The most load-bearing tests are in `packages/core/src/tool-protocol/*.test.ts`: 
 **`pnpm scenario:live`** runs the same scenario suite against real models from `packages/core/src/testing/scenario-models.ts` (local Ollama tags by default; override with `SCENARIO_MODELS`, `SCENARIO_BASE_URL`, or `SCENARIO_INCLUDE_ANTHROPIC=1`). It prints a `model x invariant` table per scenario, then a ready-to-paste markdown summary (also written to `scenario-matrix.md`) with a diff against the previous run - "no invariant regressed" or a flagged list of `✓ -> ✗` flips. It writes a JSON transcript for every invariant failure to `packages/core/src/testing/captured-failures/` (git-ignored, ready to promote into a scripted `tool-protocol` fixture), and appends one summary line to `scenario-results.jsonl`.
 
 This is a **discovery tool, not a gate** - a weak model failing `taskDone`, or even an invariant, on a hard task is expected. Watch the *diff from the last run*: a previously-passing (model, invariant) that now fails is a real regression. Run it when you touch the agent loop, the tool-call parser, or a built-in tool.
+
+**`pnpm scenario:history [scenario]`** reads every run in `scenario-results.jsonl` and prints, per `scenario x model x invariant`, the pass/fail history as a sparkline (`✓✓✗✓✗`) plus a rolling regression rate. Use it to tell a real regression from weak-model noise - a row that flips back and forth is flagged `flappy`; one that went `✓` → `✗` and stayed is a genuine regression.
+
+### `polyglot replay` and regression fixtures
+
+`polyglot replay <id|path>` re-runs a saved session against the **current** build:
+
+- **Parse-level (default)** - re-resolves every recorded model completion through today's tool-call parser / repair pipeline and reports where it diverges from what the session recorded: a call that no longer resolves (a parser regression), a repair that's now needed, a since-released fix that would have helped. Fully deterministic, no execution, no working directory.
+- **`--execute --seed <dir>`** - replays the whole agent loop in a temp working directory seeded from `<dir>`, and reports invariants + the tool-call diff.
+- **`--output-format json`** for the machine-readable report.
+
+**Promoting a failure into a regression fixture:**
+
+1. `pnpm scenario:live` captures failing transcripts to `packages/core/src/testing/captured-failures/` (git-ignored).
+2. Once the underlying bug is fixed, `polyglot replay --save <name> <captured-file-or-session>` writes `packages/core/src/testing/regressions/<name>.json` - the recorded completions plus the *current* (correct) resolution as the expectation. Add `--seed <dir>` to capture seed files for an execute-mode fixture.
+3. Eyeball the fixture (it stores the completions / user input / seed files you pointed at - check there's nothing sensitive), then commit it.
+4. `regressions.test.ts` runs every `regressions/*.json` in normal CI, deterministically and with no inference server - this is the gate that keeps a fixed bug fixed, alongside `scenario-matrix.test.ts`.
+
+`regressions/*.json` are committed and reviewed like code; `captured-failures/*.json` stay git-ignored.
 
 ## Code style
 

@@ -1,0 +1,20 @@
+{
+  "name": "edit-file-body-in-a-fence",
+  "capturedFrom": "scenario delete-dead-code / qwen2.5-coder:7b class / realistic",
+  "structured": false,
+  "userInput": "Remove the unused() function from util.mjs. Nothing imports it.",
+  "seedFiles": {
+    "util.mjs": "export function used(x) {\n  return x * 2;\n}\n\nexport function unused(x) {\n  return x + 1;\n}\n\nconsole.log(used(21));\n"
+  },
+  "completions": [
+    "<tool_call name=\"edit_file\">\n```json\n{\"path\": \"util.mjs\", \"old_string\": \"\\n\\nexport function unused(x) {\\n  return x + 1;\\n}\\n\", \"new_string\": \"\\n\"}\n```\n</tool_call>",
+    "Removed the unused() function."
+  ],
+  "expect": {
+    "invariants": ["noRunaway", "honestCompletion", "resultsPairedToCalls"],
+    "finalFiles": {
+      "util.mjs": "export function used(x) {\n  return x * 2;\n}\n\nconsole.log(used(21));\n"
+    },
+    "stopReason": "done"
+  }
+}

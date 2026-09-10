@@ -71,6 +71,30 @@ describe("repairJson - basics", () => {
   });
 });
 
+describe("repairJson - loose key/value fallback (YAML/dict-ish bodies)", () => {
+  it("extracts `key: value` and `key = 'value'` lines", () => {
+    expect(ok(repairJson("path: src/app.ts\nmode = 'rw'"))).toEqual({
+      path: "src/app.ts",
+      mode: "rw",
+    });
+  });
+
+  it("takes the first delimiter and keeps the rest of the line as the value", () => {
+    expect(ok(repairJson("query: a:b=c"))).toEqual({ query: "a:b=c" });
+  });
+
+  it("strips a single wrapping quote from the key and drops a trailing comma", () => {
+    expect(ok(repairJson('"path": a.ts,'))).toEqual({ path: "a.ts" });
+  });
+
+  it("returns quickly on a long delimiter-free line (no super-linear backtracking)", () => {
+    const evil = `${"a ".repeat(100_000)}`;
+    const start = performance.now();
+    expect(repairJson(evil).ok).toBe(false);
+    expect(performance.now() - start).toBeLessThan(200);
+  });
+});
+
 describe("repairJson - trailing blob field (write_file with an unescaped file body)", () => {
   it("recovers content with real newlines and unescaped interior quotes", () => {
     const body = `{"path": "todo.mjs", "content": "${FILE}"}`;

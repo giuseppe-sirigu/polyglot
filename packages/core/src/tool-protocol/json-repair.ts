@@ -177,6 +177,19 @@ function extractTrailingBlobField(text: string): Record<string, unknown> | null 
   return { ...scalars, [blobKey]: raw };
 }
 
+/** Splits one `key: value` / `"key" = value` line into `[key, value]`, or null when it isn't
+ * that shape. Plain string ops + a single anchored `[\w-]+` test - deliberately not a
+ * `["']?…["']?\s*[:=]\s*(.+)$` regex, whose optional delimiters around a `+` quantifier trip
+ * the js/polynomial-redos scanner even though it backtracks linearly. */
+function splitKeyValueLine(line: string): [string, string] | null {
+  const delim = line.search(/[:=]/);
+  if (delim <= 0) return null;
+  const key = line.slice(0, delim).trim().replace(/^["']/, "").replace(/["']$/, "");
+  const value = line.slice(delim + 1).trim();
+  if (!value || !/^[\w-]+$/.test(key)) return null;
+  return [key, value];
+}
+
 /** Last-resort extraction for bodies that look like YAML/Python-dict rather than JSON,
  * e.g. `path: src/app.ts` or `path = 'src/app.ts'` lines. */
 function extractLooseKeyValuePairs(text: string): Record<string, unknown> | null {
@@ -186,17 +199,14 @@ function extractLooseKeyValuePairs(text: string): Record<string, unknown> | null
     .filter(Boolean);
   if (lines.length === 0) return null;
 
-  const pairRegex = /^["']?([\w-]+)["']?\s*[:=]\s*(.+)$/;
   const result: Record<string, unknown> = {};
   let matchedAny = false;
 
   for (const line of lines) {
-    const match = pairRegex.exec(line);
-    if (!match) continue;
+    const pair = splitKeyValueLine(line);
+    if (!pair) continue;
     matchedAny = true;
-    const key = match[1] as string;
-    const rawValue = dropTrailingComma(match[2] as string).trim();
-    result[key] = coerceScalar(rawValue);
+    result[pair[0]] = coerceScalar(dropTrailingComma(pair[1]).trim());
   }
 
   return matchedAny ? result : null;

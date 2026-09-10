@@ -18,6 +18,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "scenario:live": "tsx scripts/scenario-matrix.ts",
+    "scenario:history": "tsx scripts/scenario-history.ts",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "publish:manual": "pnpm build && d=$(mktemp -d) && pnpm --filter @usepolyglot/cli pack --pack-destination \"$d\" && npm publish \"$d\"/usepolyglot-cli-*.tgz --access public"

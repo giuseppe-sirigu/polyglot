@@ -12,6 +12,7 @@ import { HELP_TEXT, parseCliArgs } from "./args.js";
 import { resolveResumeTarget, runHeadless } from "./headless.js";
 import { runInit } from "./init.js";
 import { applyCapabilityProbe } from "./probe.js";
+import { runReplay } from "./replay.js";
 import { runShare } from "./share.js";
 import { App } from "./ui/App.js";
 
@@ -50,6 +51,10 @@ async function main() {
   }
   if (cliArgs.share) {
     process.exitCode = await runShare(cliArgs);
+    return;
+  }
+  if (cliArgs.replay) {
+    process.exitCode = await runReplay(cliArgs);
     return;
   }
 
