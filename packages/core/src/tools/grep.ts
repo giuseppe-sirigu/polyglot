@@ -1,6 +1,6 @@
 import type { Dirent } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { SECRET_DIR_NAMES, isSecretFilename } from "../permissions/secret-paths.js";
 import { resolveToolPath } from "./resolve-path.js";
 import { type ToolDefinition, textResult } from "./types.js";
@@ -41,7 +41,8 @@ async function* walk(dir: string, signal: AbortSignal): AsyncGenerator<string> {
 
 export const grepTool: ToolDefinition<GrepInput> = {
   name: "grep",
-  description: "Search file contents for a regular expression, recursively under a directory.",
+  description:
+    "Search file contents for a regular expression. `path` may be a directory (searched recursively) or a single file.",
   permission: "read",
   inputSchema: {
     type: "object",
@@ -50,7 +51,7 @@ export const grepTool: ToolDefinition<GrepInput> = {
       path: {
         type: "string",
         description:
-          "Directory to search under (default: cwd). Absolute path, or relative to the current working directory.",
+          "Directory to search recursively, or a single file to search (default: cwd). Absolute path, or relative to the current working directory.",
       },
     },
     required: ["pattern"],
@@ -72,8 +73,25 @@ export const grepTool: ToolDefinition<GrepInput> = {
       root = resolved.path;
     }
 
+    // `path` can be a single file, not just a directory - grepping a specific file is a normal
+    // thing to want, and walk()'s readdir() on a file just silently yields nothing ("No
+    // matches"), which reads as "the pattern isn't there" rather than "wrong path kind".
+    let rootIsFile = false;
+    try {
+      rootIsFile = (await stat(root)).isFile();
+    } catch {
+      return textResult(`Path not found: ${input.path ?? "."}`, false);
+    }
+    if (rootIsFile && isSecretFilename(basename(root))) {
+      return textResult(
+        `${input.path} looks like a secret file - not searched. Use read_file if you really need it.`,
+        false,
+      );
+    }
+    const files = rootIsFile ? oneFile(root) : walk(root, ctx.signal);
+
     const results: string[] = [];
-    for await (const file of walk(root, ctx.signal)) {
+    for await (const file of files) {
       if (results.length >= MAX_MATCHES) break;
       let content: string;
       try {
@@ -94,9 +112,14 @@ export const grepTool: ToolDefinition<GrepInput> = {
     }
 
     if (results.length === 0) {
-      return textResult(`No matches for /${input.pattern}/ under ${input.path ?? "."}`);
+      const where = rootIsFile ? `in ${input.path}` : `under ${input.path ?? "."}`;
+      return textResult(`No matches for /${input.pattern}/ ${where}`);
     }
     const suffix = results.length >= MAX_MATCHES ? `\n[truncated at ${MAX_MATCHES} matches]` : "";
     return textResult(results.join("\n") + suffix);
   },
 };
+
+async function* oneFile(path: string): AsyncGenerator<string> {
+  yield path;
+}
