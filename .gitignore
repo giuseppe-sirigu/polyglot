@@ -18,3 +18,6 @@ packages/cli/README.md
 packages/core/src/testing/captured-failures/
 scenario-results.jsonl
 scenario-matrix.md
+
+# Throwaway B1 gateway feasibility spike (not a workspace package, not built/linted).
+/spike/
