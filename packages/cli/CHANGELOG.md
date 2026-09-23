@@ -1,5 +1,16 @@
 # @usepolyglot/cli
 
+## 0.12.0
+
+### Minor Changes
+
+- **Opt-in local usage telemetry.** With `telemetry: true` in settings, polyglot records which
+  provider/model/base-URL host you use and whether tool-call parsing needed repair or failed - no
+  prompts, file contents, tool arguments, or model output. Undefined means "never asked": on first
+  run in the interactive UI you get a one-time consent prompt, same UX as the existing `autoUpdate`
+  toggle. Local-only for now - written as JSONL under `~/.polyglot/telemetry`, nothing is sent over
+  the network. `/status` shows the current setting.
+
 ## 0.11.1
 
 ### Patch Changes
