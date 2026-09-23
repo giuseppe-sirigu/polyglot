@@ -34,11 +34,24 @@ export {
 } from "./audit/audit-log.js";
 export type { AuditEvent, AuditSink, AuditEventContext } from "./audit/audit-log.js";
 export {
+  createTelemetrySink,
+  telemetryEventFromAgentEvent,
+  telemetryDir,
+  pruneTelemetryLogs,
+} from "./telemetry/telemetry-log.js";
+export type {
+  TelemetryEvent,
+  TelemetrySink,
+  TelemetryEventContext,
+} from "./telemetry/telemetry-log.js";
+export {
   loadConfig,
   globalSettingsPath,
   projectSettingsPath,
   getAutoUpdatePreference,
   setAutoUpdatePreference,
+  getTelemetryPreference,
+  setTelemetryPreference,
   writeGlobalSettings,
   DEFAULT_MAX_CONTEXT_TOKENS,
 } from "./config/loader.js";

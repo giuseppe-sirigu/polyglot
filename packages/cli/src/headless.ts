@@ -22,11 +22,13 @@ import {
   createHookDispatcher,
   createProviderAdapter,
   createSession,
+  createTelemetrySink,
   createWebSearchTool,
   editFileTool,
   emptyReliabilityTotals,
   emptyUsageTotals,
   expandFileMentions,
+  getTelemetryPreference,
   globTool,
   grepTool,
   listSessions,
@@ -38,9 +40,11 @@ import {
   pruneAuditLogs,
   prunePlans,
   pruneSessions,
+  pruneTelemetryLogs,
   readFileTool,
   runAgentTurn,
   scanContent,
+  telemetryEventFromAgentEvent,
   turnUsageFromEvent,
   webFetchTool,
   writeFileTool,
@@ -134,6 +138,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
         path: resolved.audit.path,
         exceptId: session.id,
       }),
+      pruneTelemetryLogs(resolved.retentionDays, { exceptId: session.id }),
     ]);
   }
 
@@ -142,6 +147,24 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     sessionId: session.id,
     path: resolved.audit.path,
     hashArgs: resolved.audit.hashArgs,
+  });
+
+  // No consent prompt here - headless mode has no TTY to ask on. Only ever records when the
+  // user already answered "yes" interactively at some point (see App.tsx); "never asked" reads
+  // as off, same as audit's default.
+  const telemetrySink = createTelemetrySink({
+    enabled: getTelemetryPreference() === true,
+    sessionId: session.id,
+    provider: resolved.engine.provider,
+    model: resolved.engine.model,
+    baseURLHost: (() => {
+      if (!resolved.engine.baseURL) return undefined;
+      try {
+        return new URL(resolved.engine.baseURL).host;
+      } catch {
+        return undefined;
+      }
+    })(),
   });
 
   const mcpServerNames = Object.keys(resolved.mcpServers);
@@ -363,7 +386,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     if (outcome.block !== undefined) {
       process.stderr.write(`[polyglot] userPromptSubmit hook blocked this run: ${outcome.block}\n`);
       process.off("SIGINT", onSigint);
-      await Promise.all([mcp?.close(), auditSink.close()]);
+      await Promise.all([mcp?.close(), auditSink.close(), telemetrySink.close()]);
       if (json) {
         process.stdout.write(
           `${JSON.stringify({
@@ -417,13 +440,20 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
       failover: agentInvoke ? [] : failoverChain,
       onMessage: persist ? (message) => persistMessage(session.id, message) : undefined,
       onEvent: (event) => {
+        const at = new Date().toISOString();
         const auditEvent = auditEventFromAgentEvent(event, {
           sessionId: session.id,
           model: session.model,
           hashArgs: resolved.audit.hashArgs,
-          at: new Date().toISOString(),
+          at,
         });
         if (auditEvent) auditSink.record(auditEvent);
+        const telemetryEvent = telemetryEventFromAgentEvent(event, {
+          sessionId: session.id,
+          model: session.model,
+          at,
+        });
+        if (telemetryEvent) telemetrySink.record(telemetryEvent);
         switch (event.type) {
           case "text_delta":
             assistantText += event.delta;
@@ -500,7 +530,7 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     }
   } finally {
     process.off("SIGINT", onSigint);
-    await Promise.all([mcp?.close(), auditSink.close()]);
+    await Promise.all([mcp?.close(), auditSink.close(), telemetrySink.close()]);
   }
 
   if (json) {

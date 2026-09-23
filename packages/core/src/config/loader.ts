@@ -141,6 +141,19 @@ export function setAutoUpdatePreference(value: boolean): void {
   writeGlobalSettings({ autoUpdate: value });
 }
 
+/** Undefined = the user has never been asked. Mirrors getAutoUpdatePreference exactly - reads
+ * only the global settings file, since whether to record telemetry is a per-machine choice. */
+export function getTelemetryPreference(): boolean | undefined {
+  const value = readRawSettingsFile(globalSettingsPath()).telemetry;
+  return typeof value === "boolean" ? value : undefined;
+}
+
+/** Merges just the telemetry key into the global settings file, preserving everything else
+ * untouched. Mirrors setAutoUpdatePreference. */
+export function setTelemetryPreference(value: boolean): void {
+  writeGlobalSettings({ telemetry: value });
+}
+
 /** Shallow-merges `patch` into `~/.polyglot/settings.json`, creating the file (and its
  * directory) if needed and leaving every other key - including ones this schema doesn't know
  * about - untouched. Used by `polyglot init` and `setAutoUpdatePreference`. */

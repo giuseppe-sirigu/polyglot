@@ -13,6 +13,7 @@ export interface StatusReportFields {
   transcriptPath: string | null;
   retentionDays: number | undefined;
   autoUpdate: boolean | undefined;
+  telemetry: boolean | undefined;
   /** Configured MCP servers, each formatted as `name (transport)` (or `name (transport, not connected)`). */
   mcpServers: string[];
   /** `AGENTS.md` / `POLYGLOT.md` sources loaded, or "none". */
@@ -94,6 +95,9 @@ export function formatStatusReport(f: StatusReportFields): string {
     `  auto-update:  ${
       f.autoUpdate === undefined ? "not set" : f.autoUpdate ? "on" : "notify only"
     } (checks npm on startup)`,
+    `  telemetry:    ${
+      f.telemetry === undefined ? "not set" : f.telemetry ? "on (local only)" : "off"
+    } (~/.polyglot/telemetry, never sent over the network)`,
     `  mcp servers:  ${f.mcpServers.length > 0 ? f.mcpServers.join(", ") : "none"}`,
     `  instructions: ${f.instructions}`,
     `  agents:       ${f.agents}`,

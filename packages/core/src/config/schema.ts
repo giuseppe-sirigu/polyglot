@@ -109,6 +109,14 @@ export const SettingsSchema = z.object({
    * on every future run. Lives only in the global settings file, never
    * merged from project-local settings (this is a per-machine choice). */
   autoUpdate: z.boolean().optional(),
+  /** Whether polyglot may record local, non-content telemetry: which provider/model/base-URL
+   * host you use, and whether tool-call parsing needed repair or failed outright - no tool
+   * names, arguments, prompts, or model output. Undefined means "never asked" - the CLI shows a
+   * one-time consent prompt in that case, exactly like autoUpdate. true/false is the user's
+   * stored answer, applied silently from then on. Lives only in the global settings file, never
+   * merged from project-local settings (a per-machine choice). Local-only for now: written as
+   * JSONL under ~/.polyglot/telemetry; nothing is sent over the network. */
+  telemetry: z.boolean().optional(),
   /** Opt-in tamper-evident-ish record of every tool call / result / permission decision /
    * usage / stop, one JSONL file per session under ~/.polyglot/audit. Sub-fields are left
    * without schema defaults so layered configs can tell "unset" from "set" - the effective

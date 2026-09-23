@@ -32,6 +32,7 @@ import {
   createHookDispatcher,
   createProviderAdapter,
   createSession,
+  createTelemetrySink,
   createWebSearchTool,
   editFileTool,
   emptyReliabilityTotals,
@@ -39,6 +40,7 @@ import {
   expandFileMentions,
   findModelOption,
   getAutoUpdatePreference,
+  getTelemetryPreference,
   globTool,
   grepTool,
   listModelOptions,
@@ -52,6 +54,7 @@ import {
   pruneAuditLogs,
   prunePlans,
   pruneSessions,
+  pruneTelemetryLogs,
   readFileTool,
   resolveEngineConfigForModel,
   runAgentTurn,
@@ -62,7 +65,9 @@ import {
   serializeSessionMarkdown,
   sessionContextTokens,
   setAutoUpdatePreference,
+  setTelemetryPreference,
   shouldCompact,
+  telemetryEventFromAgentEvent,
   turnUsageFromEvent,
   webFetchTool,
   writeFileTool,
@@ -89,6 +94,7 @@ import { RepairViewContext } from "./RepairViewContext.js";
 import { ResumeSessionPrompt } from "./ResumeSessionPrompt.js";
 import { Spinner } from "./Spinner.js";
 import { StatusBar } from "./StatusBar.js";
+import { TelemetryConsentPrompt } from "./TelemetryConsentPrompt.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
 import { TranscriptGroupView, groupKey } from "./TranscriptGroupView.js";
 import { TranscriptLine } from "./TranscriptLine.js";
@@ -155,6 +161,8 @@ export function App({
   const questionResolveRef = useRef<((answers: string[]) => void) | null>(null);
   const [showUpdateConsent, setShowUpdateConsent] = useState(false);
   const updateConsentResolveRef = useRef<((enabled: boolean) => void) | null>(null);
+  const [showTelemetryConsent, setShowTelemetryConsent] = useState(false);
+  const telemetryConsentResolveRef = useRef<((enabled: boolean) => void) | null>(null);
   const [resumeRequest, setResumeRequest] = useState<SessionSummary[] | null>(null);
   const [modelRequest, setModelRequest] = useState<ModelOption[] | null>(null);
   // Ctrl+R toggles the verbatim raw block under every repaired tool-call card.
@@ -734,6 +742,38 @@ export function App({
     };
   }, [auditSink]);
 
+  // Tracks the resolved telemetry preference so the sink below can flip from off to on the
+  // moment first-run consent is given, without waiting for a restart.
+  const [telemetryEnabled, setTelemetryEnabled] = useState(() => getTelemetryPreference() === true);
+
+  // One telemetry sink per session, same lifecycle as the audit sink. No-op until telemetry has
+  // been consented to (including "never asked yet" - see the consent effect below); recreated
+  // (and its session_start record fired) the moment consent flips to true mid-session.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resolved.engine.* is process-stable; only session.id/telemetryEnabled vary
+  const telemetrySink = useMemo(
+    () =>
+      createTelemetrySink({
+        enabled: telemetryEnabled,
+        sessionId: session.id,
+        provider: resolved.engine.provider,
+        model: resolved.engine.model,
+        baseURLHost: (() => {
+          if (!resolved.engine.baseURL) return undefined;
+          try {
+            return new URL(resolved.engine.baseURL).host;
+          } catch {
+            return undefined;
+          }
+        })(),
+      }),
+    [session.id, telemetryEnabled],
+  );
+  useEffect(() => {
+    return () => {
+      void telemetrySink.close();
+    };
+  }, [telemetrySink]);
+
   if (!startedRef.current) {
     startedRef.current = true;
     if (probeNote) {
@@ -820,17 +860,39 @@ export function App({
     // run once on startup - intentionally not re-checking on every render
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pushItem is stable enough here (setState-only, ref-based id) and this must run exactly once on mount
+  useEffect(() => {
+    (async () => {
+      if (getTelemetryPreference() !== undefined) return;
+      const enabled = await new Promise<boolean>((resolve) => {
+        telemetryConsentResolveRef.current = resolve;
+        setShowTelemetryConsent(true);
+      });
+      setTelemetryPreference(enabled);
+      setTelemetryEnabled(enabled);
+      pushItem({
+        kind: "system",
+        tone: "info",
+        text: enabled
+          ? "Got it - polyglot will record local usage telemetry under ~/.polyglot/telemetry."
+          : "Got it - no telemetry will be recorded. Change this anytime in ~/.polyglot/settings.json.",
+      });
+    })();
+    // run once on startup - intentionally not re-checking on every render
+  }, []);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount; session.id is the initial session's, stable here
   useEffect(() => {
     const days = resolved.retentionDays;
     if (!resolved.persistTranscripts || !days) return;
     (async () => {
-      const [sessions, plans, audits] = await Promise.all([
+      const [sessions, plans, audits, telemetry] = await Promise.all([
         pruneSessions(days, session.id),
         prunePlans(days),
         pruneAuditLogs(days, { path: resolved.audit.path, exceptId: session.id }),
+        pruneTelemetryLogs(days, { exceptId: session.id }),
       ]);
-      const total = sessions + plans + audits;
+      const total = sessions + plans + audits + telemetry;
       if (total > 0) {
         pushItem({
           kind: "system",
@@ -852,6 +914,7 @@ export function App({
       !planRequest &&
       !questionRequest &&
       !showUpdateConsent &&
+      !showTelemetryConsent &&
       !resumeRequest &&
       !modelRequest;
 
@@ -972,6 +1035,7 @@ export function App({
             : null,
           retentionDays: resolved.retentionDays,
           autoUpdate: getAutoUpdatePreference(),
+          telemetry: getTelemetryPreference(),
           mcpServers: Object.entries(resolved.mcpServers).map(([name, cfg]) => {
             const connected = mcp?.servers.find((s) => s.serverName === name);
             if (connected) return `${name} (${connected.transport})`;
@@ -1324,13 +1388,20 @@ export function App({
           : undefined,
         onEvent: (event) => {
           if (isStale()) return;
+          const at = new Date().toISOString();
           const auditEvent = auditEventFromAgentEvent(event, {
             sessionId: session.id,
             model: session.model,
             hashArgs: resolved.audit.hashArgs,
-            at: new Date().toISOString(),
+            at,
           });
           if (auditEvent) auditSink.record(auditEvent);
+          const telemetryEvent = telemetryEventFromAgentEvent(event, {
+            sessionId: session.id,
+            model: session.model,
+            at,
+          });
+          if (telemetryEvent) telemetrySink.record(telemetryEvent);
           if (event.type === "text_delta") {
             streamingRef.current += event.delta;
             scheduleStreamFlush();
@@ -1574,6 +1645,12 @@ export function App({
     setShowUpdateConsent(false);
   }
 
+  function respondTelemetryConsent(enabled: boolean) {
+    telemetryConsentResolveRef.current?.(enabled);
+    telemetryConsentResolveRef.current = null;
+    setShowTelemetryConsent(false);
+  }
+
   async function handleResumeSelect(id: string) {
     setResumeRequest(null);
     const loaded = await loadSession(id);
@@ -1757,6 +1834,8 @@ export function App({
           <AskUserQuestionPrompt request={questionRequest} onRespond={respondQuestion} />
         ) : showUpdateConsent ? (
           <AutoUpdateConsentPrompt onRespond={respondUpdateConsent} />
+        ) : showTelemetryConsent ? (
+          <TelemetryConsentPrompt onRespond={respondTelemetryConsent} />
         ) : resumeRequest ? (
           <ResumeSessionPrompt
             sessions={resumeRequest}

@@ -51,6 +51,7 @@ describe("formatStatusReport", () => {
     transcriptPath: "~/.polyglot/sessions/abc.jsonl",
     retentionDays: undefined,
     autoUpdate: true,
+    telemetry: undefined,
     mcpServers: [],
     instructions: "none",
     agents: "none",
