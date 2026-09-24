@@ -1,5 +1,17 @@
 # @usepolyglot/cli
 
+## 0.13.0
+
+### Minor Changes
+
+- Add `polyglot report generate`/`polyglot report submit` - an opt-in, local-first reliability
+  digest aggregated from the local audit log, with an interactive raw-samples review screen
+  (auto-redacted, per-sample include/exclude) gating anything beyond aggregate counts. Add the
+  CLI-side central audit reporter (`POLYGLOT_CONTROL_PLANE_URL`/`POLYGLOT_CONTROL_PLANE_TOKEN`/
+  `POLYGLOT_CONTROL_PLANE_INCLUDE_RAW_CALLS`, `centralAudit` setting) - opt-in, one-time consent
+  prompt, reports tool-call/repair events to a team's self-hosted control plane independent of
+  whether the Gateway is in the request path at all.
+
 ## 0.12.0
 
 ### Minor Changes
