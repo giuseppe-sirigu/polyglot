@@ -117,6 +117,14 @@ export const SettingsSchema = z.object({
    * merged from project-local settings (a per-machine choice). Local-only for now: written as
    * JSONL under ~/.polyglot/telemetry; nothing is sent over the network. */
   telemetry: z.boolean().optional(),
+  /** Whether polyglot may report audit events (tool calls, repairs, parse errors - projected
+   * from the same AuditEvent the local audit log writes, argument hashes only unless raw-call
+   * reporting is separately opted into via POLYGLOT_CONTROL_PLANE_INCLUDE_RAW_CALLS) to a
+   * control plane at POLYGLOT_CONTROL_PLANE_URL. Undefined means "never asked" - only asked at
+   * all when that env var is actually set, since there's nothing to opt into otherwise. Lives
+   * only in the global settings file, never merged from project-local settings (a per-machine
+   * choice), mirroring telemetry/autoUpdate. */
+  centralAudit: z.boolean().optional(),
   /** Opt-in tamper-evident-ish record of every tool call / result / permission decision /
    * usage / stop, one JSONL file per session under ~/.polyglot/audit. Sub-fields are left
    * without schema defaults so layered configs can tell "unset" from "set" - the effective

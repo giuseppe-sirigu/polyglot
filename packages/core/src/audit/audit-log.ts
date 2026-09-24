@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { appendFile, readdir, rm, stat } from "node:fs/promises";
+import { appendFile, readFile, readdir, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentEvent } from "../agent/events.js";
+import type { RepairStrategy } from "../tool-protocol/json-repair.js";
 
 const DAY_MS = 86_400_000;
 
@@ -31,6 +32,12 @@ export type AuditEvent =
       /** The verbatim malformed block, recorded whenever `repaired` - regardless of
        * `hashArgs` - so a parser fix can't silently hide a model regression. */
       rawCall?: string;
+      /** Which repair path resolved this call, including "clean" for a non-repaired one -
+       * see ParsedToolCall.strategy. Absent for structured-output mode and the
+       * schema-extraction fallback, neither of which produce one today. Feeds the reliability
+       * digest's per-model/per-strategy breakdown and its "flag low-confidence repairs for
+       * review" logic (report/generate.ts). */
+      strategy?: RepairStrategy;
     }
   | {
       kind: "tool_result";
@@ -155,6 +162,7 @@ export function auditEventFromAgentEvent(
         // recorded verbatim on every repair, even under hashArgs - the whole point is to
         // keep the malformed original inspectable after the fact.
         ...(event.rawCall ? { rawCall: event.rawCall } : {}),
+        ...(event.strategy ? { strategy: event.strategy } : {}),
       };
     case "tool_result":
       return {
@@ -273,4 +281,45 @@ export async function pruneAuditLogs(
     }
   }
   return removed;
+}
+
+/**
+ * Reads every `AuditEvent` recorded across every session's file in the last `sinceDays` days -
+ * feeds `report generate` (the reliability digest, `report/generate.ts`). A malformed line
+ * (a partial write from a crash, a hand-edited file) is skipped rather than failing the whole
+ * read; an unreadable or missing directory (audit logging was never enabled) returns `[]`,
+ * matching every other "nothing recorded" case in this module.
+ */
+export async function readAuditEvents(opts: {
+  sinceDays: number;
+  path?: string;
+}): Promise<AuditEvent[]> {
+  const dir = auditDir(opts.path);
+  let files: string[];
+  try {
+    files = (await readdir(dir)).filter((f) => f.endsWith(".jsonl"));
+  } catch {
+    return [];
+  }
+
+  const cutoff = Date.now() - opts.sinceDays * DAY_MS;
+  const events: AuditEvent[] = [];
+  for (const file of files) {
+    let raw: string;
+    try {
+      raw = await readFile(join(dir, file), "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of raw.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const event = JSON.parse(line) as AuditEvent;
+        if (Date.parse(event.at) >= cutoff) events.push(event);
+      } catch {
+        // skip malformed lines rather than fail the whole read
+      }
+    }
+  }
+  return events;
 }

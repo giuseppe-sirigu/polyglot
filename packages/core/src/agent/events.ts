@@ -1,4 +1,5 @@
 import type { ContentFinding } from "../permissions/secret-patterns.js";
+import type { RepairStrategy } from "../tool-protocol/json-repair.js";
 
 export type AgentEvent =
   | { type: "turn_start" }
@@ -16,6 +17,10 @@ export type AgentEvent =
        * args pulled out by name, a fuzzy tool name). `rawCall` is the verbatim block. */
       repaired?: boolean;
       rawCall?: string;
+      /** Which repair path resolved this call - see ParsedToolCall.strategy. Absent for
+       * structured-output mode and the schema-extraction fallback, neither of which produce
+       * one today. */
+      strategy?: RepairStrategy;
     }
   | { type: "tool_result"; toolCallId: string; name: string; resultText: string; isError: boolean }
   // Secret- / PII-looking values found in a tool result by content scanning. `redacted` is

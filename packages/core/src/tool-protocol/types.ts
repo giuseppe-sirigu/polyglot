@@ -1,3 +1,5 @@
+import type { RepairStrategy } from "./json-repair.js";
+
 export type ToolCallEnvelopeVariant = "xml" | "fenced";
 
 export interface RawToolCallEnvelope {
@@ -22,6 +24,12 @@ export interface ParsedToolCall {
    * The frontend flags these and keeps `raw` available so a repair can't silently mask a
    * model getting worse. */
   repaired?: boolean;
+  /** Which repair path resolved this call - "clean" for a bare `JSON.parse`, otherwise which
+   * fallback fired. Present whenever `repairJson` itself produced the value (both free-text
+   * paths); absent for the schema-extraction fallback (`extractBySchema`) and structured-output
+   * mode, neither of which goes through `repairJson` per call. Feeds the reliability
+   * digest's "flag low-confidence repairs for review" logic (`report/generate.ts`). */
+  strategy?: RepairStrategy;
 }
 
 export interface ToolCallParseError {

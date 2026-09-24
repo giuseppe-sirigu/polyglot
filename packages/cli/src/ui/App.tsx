@@ -28,6 +28,7 @@ import {
   compactSession,
   createAskUserQuestionTool,
   createAuditSink,
+  createCentralAuditReporter,
   createExitPlanModeTool,
   createHookDispatcher,
   createProviderAdapter,
@@ -40,6 +41,7 @@ import {
   expandFileMentions,
   findModelOption,
   getAutoUpdatePreference,
+  getCentralAuditPreference,
   getTelemetryPreference,
   globTool,
   grepTool,
@@ -65,6 +67,7 @@ import {
   serializeSessionMarkdown,
   sessionContextTokens,
   setAutoUpdatePreference,
+  setCentralAuditPreference,
   setTelemetryPreference,
   shouldCompact,
   telemetryEventFromAgentEvent,
@@ -85,6 +88,7 @@ import { resolveSkillActivation } from "../skillActivation.js";
 import { ApprovalPrompt } from "./ApprovalPrompt.js";
 import { AskUserQuestionPrompt } from "./AskUserQuestionPrompt.js";
 import { AutoUpdateConsentPrompt } from "./AutoUpdateConsentPrompt.js";
+import { CentralAuditConsentPrompt } from "./CentralAuditConsentPrompt.js";
 import { HEADER_LINE_COUNT, Header } from "./Header.js";
 import { InputBar } from "./InputBar.js";
 import { LiveToolLog } from "./LiveToolLog.js";
@@ -163,6 +167,8 @@ export function App({
   const updateConsentResolveRef = useRef<((enabled: boolean) => void) | null>(null);
   const [showTelemetryConsent, setShowTelemetryConsent] = useState(false);
   const telemetryConsentResolveRef = useRef<((enabled: boolean) => void) | null>(null);
+  const [showCentralAuditConsent, setShowCentralAuditConsent] = useState(false);
+  const centralAuditConsentResolveRef = useRef<((enabled: boolean) => void) | null>(null);
   const [resumeRequest, setResumeRequest] = useState<SessionSummary[] | null>(null);
   const [modelRequest, setModelRequest] = useState<ModelOption[] | null>(null);
   // Ctrl+R toggles the verbatim raw block under every repaired tool-call card.
@@ -774,6 +780,31 @@ export function App({
     };
   }, [telemetrySink]);
 
+  // Both unset (the default) means no control plane configured at all - the reporter is a
+  // no-op and consent is never even asked (see the effect below), mirroring the Gateway's own
+  // "both unset = fully self-hosted, zero SaaS dependency" trust-boundary design.
+  const controlPlaneUrl = process.env.POLYGLOT_CONTROL_PLANE_URL;
+  const controlPlaneToken = process.env.POLYGLOT_CONTROL_PLANE_TOKEN;
+  const [centralAuditEnabled, setCentralAuditEnabled] = useState(
+    () => getCentralAuditPreference() === true,
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: controlPlaneUrl/Token are process-stable; only session.id/centralAuditEnabled vary
+  const centralAuditReporter = useMemo(
+    () =>
+      createCentralAuditReporter({
+        enabled: centralAuditEnabled,
+        controlPlaneUrl,
+        controlPlaneToken,
+        includeRawCalls: process.env.POLYGLOT_CONTROL_PLANE_INCLUDE_RAW_CALLS === "true",
+      }),
+    [session.id, centralAuditEnabled],
+  );
+  useEffect(() => {
+    return () => {
+      void centralAuditReporter.close();
+    };
+  }, [centralAuditReporter]);
+
   if (!startedRef.current) {
     startedRef.current = true;
     if (probeNote) {
@@ -876,6 +907,28 @@ export function App({
         text: enabled
           ? "Got it - polyglot will record local usage telemetry under ~/.polyglot/telemetry."
           : "Got it - no telemetry will be recorded. Change this anytime in ~/.polyglot/settings.json.",
+      });
+    })();
+    // run once on startup - intentionally not re-checking on every render
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pushItem is stable enough here (setState-only, ref-based id) and this must run exactly once on mount
+  useEffect(() => {
+    (async () => {
+      if (!controlPlaneUrl || !controlPlaneToken) return;
+      if (getCentralAuditPreference() !== undefined) return;
+      const enabled = await new Promise<boolean>((resolve) => {
+        centralAuditConsentResolveRef.current = resolve;
+        setShowCentralAuditConsent(true);
+      });
+      setCentralAuditPreference(enabled);
+      setCentralAuditEnabled(enabled);
+      pushItem({
+        kind: "system",
+        tone: "info",
+        text: enabled
+          ? `Got it - polyglot will report audit events to ${controlPlaneUrl}.`
+          : "Got it - no audit events will be reported centrally. Change this anytime in ~/.polyglot/settings.json.",
       });
     })();
     // run once on startup - intentionally not re-checking on every render
@@ -1395,7 +1448,10 @@ export function App({
             hashArgs: resolved.audit.hashArgs,
             at,
           });
-          if (auditEvent) auditSink.record(auditEvent);
+          if (auditEvent) {
+            auditSink.record(auditEvent);
+            centralAuditReporter.record(auditEvent);
+          }
           const telemetryEvent = telemetryEventFromAgentEvent(event, {
             sessionId: session.id,
             model: session.model,
@@ -1651,6 +1707,12 @@ export function App({
     setShowTelemetryConsent(false);
   }
 
+  function respondCentralAuditConsent(enabled: boolean) {
+    centralAuditConsentResolveRef.current?.(enabled);
+    centralAuditConsentResolveRef.current = null;
+    setShowCentralAuditConsent(false);
+  }
+
   async function handleResumeSelect(id: string) {
     setResumeRequest(null);
     const loaded = await loadSession(id);
@@ -1836,6 +1898,11 @@ export function App({
           <AutoUpdateConsentPrompt onRespond={respondUpdateConsent} />
         ) : showTelemetryConsent ? (
           <TelemetryConsentPrompt onRespond={respondTelemetryConsent} />
+        ) : showCentralAuditConsent && controlPlaneUrl ? (
+          <CentralAuditConsentPrompt
+            controlPlaneUrl={controlPlaneUrl}
+            onRespond={respondCentralAuditConsent}
+          />
         ) : resumeRequest ? (
           <ResumeSessionPrompt
             sessions={resumeRequest}

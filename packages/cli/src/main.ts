@@ -13,6 +13,7 @@ import { resolveResumeTarget, runHeadless } from "./headless.js";
 import { runInit } from "./init.js";
 import { applyCapabilityProbe } from "./probe.js";
 import { runReplay } from "./replay.js";
+import { runReport } from "./report.js";
 import { runShare } from "./share.js";
 import { App } from "./ui/App.js";
 
@@ -55,6 +56,10 @@ async function main() {
   }
   if (cliArgs.replay) {
     process.exitCode = await runReplay(cliArgs);
+    return;
+  }
+  if (cliArgs.report) {
+    process.exitCode = await runReport(cliArgs);
     return;
   }
 

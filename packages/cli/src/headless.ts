@@ -18,6 +18,7 @@ import {
   connectAllMcpServers,
   createAskUserQuestionTool,
   createAuditSink,
+  createCentralAuditReporter,
   createExitPlanModeTool,
   createHookDispatcher,
   createProviderAdapter,
@@ -28,6 +29,7 @@ import {
   emptyReliabilityTotals,
   emptyUsageTotals,
   expandFileMentions,
+  getCentralAuditPreference,
   getTelemetryPreference,
   globTool,
   grepTool,
@@ -165,6 +167,15 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
         return undefined;
       }
     })(),
+  });
+
+  // No consent prompt here - headless mode has no TTY to ask on. Only ever reports when the
+  // user already answered "yes" interactively at some point (see App.tsx), same as telemetry.
+  const centralAuditReporter = createCentralAuditReporter({
+    enabled: getCentralAuditPreference() === true,
+    controlPlaneUrl: process.env.POLYGLOT_CONTROL_PLANE_URL,
+    controlPlaneToken: process.env.POLYGLOT_CONTROL_PLANE_TOKEN,
+    includeRawCalls: process.env.POLYGLOT_CONTROL_PLANE_INCLUDE_RAW_CALLS === "true",
   });
 
   const mcpServerNames = Object.keys(resolved.mcpServers);
@@ -386,7 +397,12 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     if (outcome.block !== undefined) {
       process.stderr.write(`[polyglot] userPromptSubmit hook blocked this run: ${outcome.block}\n`);
       process.off("SIGINT", onSigint);
-      await Promise.all([mcp?.close(), auditSink.close(), telemetrySink.close()]);
+      await Promise.all([
+        mcp?.close(),
+        auditSink.close(),
+        telemetrySink.close(),
+        centralAuditReporter.close(),
+      ]);
       if (json) {
         process.stdout.write(
           `${JSON.stringify({
@@ -447,7 +463,10 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
           hashArgs: resolved.audit.hashArgs,
           at,
         });
-        if (auditEvent) auditSink.record(auditEvent);
+        if (auditEvent) {
+          auditSink.record(auditEvent);
+          centralAuditReporter.record(auditEvent);
+        }
         const telemetryEvent = telemetryEventFromAgentEvent(event, {
           sessionId: session.id,
           model: session.model,
@@ -530,7 +549,12 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
     }
   } finally {
     process.off("SIGINT", onSigint);
-    await Promise.all([mcp?.close(), auditSink.close(), telemetrySink.close()]);
+    await Promise.all([
+      mcp?.close(),
+      auditSink.close(),
+      telemetrySink.close(),
+      centralAuditReporter.close(),
+    ]);
   }
 
   if (json) {

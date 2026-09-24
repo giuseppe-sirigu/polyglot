@@ -1,6 +1,6 @@
 {
   "name": "@usepolyglot/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": false,
   "description": "Provider-agnostic engine for Polyglot: tool-call repair, provider adapters, session/audit types. Bundled into @usepolyglot/cli at build time, and published standalone for other first-party services (e.g. the Gateway) to depend on as a normal npm package.",
   "license": "FSL-1.1-ALv2",

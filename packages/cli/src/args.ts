@@ -50,6 +50,21 @@ export interface CliArgs {
   replaySave?: string;
   /** `replay` output: "text" (default) or "json". */
   replayOutputFormat: OutputFormat;
+  /** `polyglot report`: the opt-in reliability digest. */
+  report: boolean;
+  reportAction?: "generate" | "submit";
+  /** `generate`: how many days back to aggregate. */
+  reportDays: number;
+  /** `generate --include-raw-samples`: flag low-confidence repairs for the redaction/review
+   * flow instead of aggregate-only output. */
+  reportIncludeRawSamples: boolean;
+  /** `generate --i-have-reviewed-and-approve-raw-samples`: the only way to combine
+   * --include-raw-samples with a non-interactive run (no TTY to review on) - see report.ts. */
+  reportApproveRawSamples: boolean;
+  /** `generate --out <path>`: output file (default ./polyglot-reliability-digest-<date>.md). */
+  reportOut?: string;
+  /** `submit <path>`: the digest file to submit. */
+  reportSubmitTarget?: string;
 }
 
 export const HELP_TEXT = `polyglot - a model-agnostic coding-agent CLI
@@ -59,6 +74,8 @@ Usage:
   polyglot init                      interactive first-run setup (writes ~/.polyglot/settings.json)
   polyglot share [id|path] [opts]    export a session transcript to a file
   polyglot replay [id|path] [opts]   re-run a saved session against the current build
+  polyglot report generate [opts]    write a local reliability digest (opt-in, no network call)
+  polyglot report submit <path>      submit a previously-generated digest
   polyglot -p "<prompt>" [options]   run one prompt, print the answer, exit
   echo "<prompt>" | polyglot -p      read the prompt from stdin
 
@@ -87,6 +104,14 @@ replay options:
       --save <name>             write the session out as a committed regression fixture
       --output-format <fmt>     "text" (default) or "json"
 
+report generate options:
+      --days <n>                              how many days back to aggregate (default 7)
+      --include-raw-samples                   flag low-confidence repairs for interactive review
+      --i-have-reviewed-and-approve-raw-samples
+                                               required with --include-raw-samples when there's no
+                                               TTY to review on (CI, scripted runs) - see the docs
+      --out <path>              output file (default ./polyglot-reliability-digest-<date>.md)
+
 In print mode the session id is written to stderr (and included in the JSON
 envelope) so it can be chained with --resume.`;
 
@@ -112,6 +137,10 @@ export function parseCliArgs(argv: string[]): CliArgs {
     replay: false,
     replayExecute: false,
     replayOutputFormat: "text",
+    report: false,
+    reportDays: 7,
+    reportIncludeRawSamples: false,
+    reportApproveRawSamples: false,
   };
   const positional: string[] = [];
 
@@ -157,6 +186,35 @@ export function parseCliArgs(argv: string[]): CliArgs {
         args.replayOutputFormat = v as OutputFormat;
       } else if (arg.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
       else args.replayTarget = arg;
+    }
+    return args;
+  }
+
+  // `report generate [--days N] [--include-raw-samples] [--i-have-reviewed-and-approve-raw-samples] [--out path]`
+  // `report submit <path>`
+  if (argv[0] === "report") {
+    args.report = true;
+    const sub = argv[1];
+    if (sub !== "generate" && sub !== "submit") {
+      throw new Error('polyglot report needs a subcommand: "generate" or "submit"');
+    }
+    args.reportAction = sub;
+    for (let i = 2; i < argv.length; i++) {
+      const arg = argv[i] as string;
+      if (arg === "--days") {
+        const v = Number.parseInt(argv[++i] ?? "", 10);
+        if (!Number.isInteger(v) || v <= 0) throw new Error("--days must be a positive integer");
+        args.reportDays = v;
+      } else if (arg === "--include-raw-samples") args.reportIncludeRawSamples = true;
+      else if (arg === "--i-have-reviewed-and-approve-raw-samples")
+        args.reportApproveRawSamples = true;
+      else if (arg === "--out") args.reportOut = argv[++i];
+      else if (arg.startsWith("-")) throw new Error(`Unknown option: ${arg}`);
+      else if (sub === "submit") args.reportSubmitTarget = arg;
+      else throw new Error(`Unknown option: ${arg}`);
+    }
+    if (sub === "submit" && !args.reportSubmitTarget) {
+      throw new Error("polyglot report submit needs a path to the digest file");
     }
     return args;
   }
