@@ -133,6 +133,34 @@ package to already exist, so:
 
 From then on, every release goes through CI with no credentials on the runner.
 
+### One-time setup: `@usepolyglot/core`'s own trusted publishing
+
+`@usepolyglot/core` publishes independently of `@usepolyglot/cli` (added 2026-09-23, so a
+private, downstream service - the Gateway - can depend on it as a normal npm package). Same
+pattern as above, mirrored:
+
+1. `npm login` / `npm whoami` (skip if already authenticated from setting up cli).
+2. First publish by hand:
+   ```bash
+   pnpm install
+   pnpm publish-core:manual
+   ```
+3. Configure the Trusted Publisher on **`npmjs.com/package/@usepolyglot/core/access`** →
+   Trusted Publisher → GitHub Actions → organization `giuseppe-sirigu`, repository `polyglot`,
+   workflow `release-core.yml`, **environment `release`** (this must match the `environment:`
+   key actually set in the workflow file - `release-core.yml` and `release.yml` both set
+   `environment: release` today, which is a manual-approval deployment gate, not the OIDC
+   environment claim; the two happen to need the same value here, per the mismatch warning
+   in each workflow's own comments. **Note**: step 3 above for cli currently says "environment
+   blank," which looks stale against `release.yml`'s actual `environment: release` - worth
+   double-checking cli's existing Trusted Publisher config on npmjs.com matches what's really
+   configured, next time either page is touched).
+4. Set **Publishing access** to require a trusted publisher or 2FA, same as cli's page.
+
+From then on, `git tag core-vX.Y.Z && git push origin core-vX.Y.Z` triggers
+`release-core.yml` with no credentials on the runner - see `RELEASING.md`'s "Releasing
+`@usepolyglot/core`" section for the day-to-day version-bump/tag steps.
+
 ### Cutting a release
 
 [`RELEASING.md`](RELEASING.md) is the print-and-tick checklist. The short version:

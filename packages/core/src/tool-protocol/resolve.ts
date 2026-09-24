@@ -17,8 +17,17 @@ export function resolveEnvelope(
   envelope: RawToolCallEnvelope,
   registry: ToolRegistry,
 ): ParsedToolCall | ToolCallParseError {
-  const repaired = repairJson(envelope.body);
+  return resolveEnvelopeFromRepair(envelope, repairJson(envelope.body), registry);
+}
 
+/** Same dispatch as `resolveEnvelope`, taking an already-computed `repairJson` result instead
+ * of the raw body - lets a caller under concurrent load (the gateway) run the repair on a
+ * worker thread and only do this synchronous validation step on the main thread. */
+export function resolveEnvelopeFromRepair(
+  envelope: RawToolCallEnvelope,
+  repaired: ReturnType<typeof repairJson>,
+  registry: ToolRegistry,
+): ParsedToolCall | ToolCallParseError {
   if (envelope.variant === "xml") {
     return resolveXmlEnvelope(envelope, repaired, registry);
   }

@@ -1,8 +1,8 @@
 {
   "name": "@usepolyglot/core",
   "version": "0.1.0",
-  "private": true,
-  "description": "Provider-agnostic engine for Polyglot. Bundled into @usepolyglot/cli at build time - not published on its own.",
+  "private": false,
+  "description": "Provider-agnostic engine for Polyglot: tool-call repair, provider adapters, session/audit types. Bundled into @usepolyglot/cli at build time, and published standalone for other first-party services (e.g. the Gateway) to depend on as a normal npm package.",
   "license": "FSL-1.1-ALv2",
   "homepage": "https://usepolyglot.dev",
   "repository": {
@@ -20,6 +20,9 @@
     ".": "./dist/index.js"
   },
   "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"

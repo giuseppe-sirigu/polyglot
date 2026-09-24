@@ -3,10 +3,13 @@
 The step-by-step runbook for cutting a release. `CONTRIBUTING.md` has the narrative
 and the one-time npm trusted-publishing setup; this is the print-and-tick version.
 
-Only `@usepolyglot/cli` is published. `packages/cli/package.json`'s `version` is the
-only one that matters - it's baked into the binary as `--version` and drives the
-auto-update check. Nothing publishes on merge to `main`; a pushed `vX.Y.Z` tag is the
-only trigger.
+Two packages publish independently: `@usepolyglot/cli` (this runbook) and
+`@usepolyglot/core` (its own, separate process below - added 2026-09-23 so
+first-party services outside this repo, e.g. the Gateway, can depend on core as a
+normal npm package instead of needing workspace access to this monorepo).
+`packages/cli/package.json`'s `version` is the one that matters for the CLI - it's
+baked into the binary as `--version` and drives the auto-update check. Nothing
+publishes on merge to `main`; a pushed `vX.Y.Z` tag is the only trigger for cli.
 
 `X.Y.Z` = the new version throughout. Order matters.
 
@@ -41,6 +44,16 @@ only trigger.
       - "**No invariant regressed**" -> good, paste the table into the release PR.
       - "**⚠️ N invariant(s) regressed**" -> **stop**, investigate before releasing
         (weak-model `taskDone` misses are fine; a `✓ -> ✗` invariant flip is not).
+      - **`llama3.2:3b` specifically is an exception worth knowing before you panic**
+        (observed 2026-09-23): with `taskDone` already at 0-1/6 for this model, a
+        *different* invariant flips almost every run - confirmed across three
+        consecutive `SCENARIO_MODELS=llama3.2 pnpm scenario:live` runs, each one
+        flagging a different invariant on a different scenario, with no code change
+        in between. That's sampling noise on the weakest model in the panel, not a
+        reproducible regression - re-run 2-3 times narrowed to just that model
+        (`SCENARIO_MODELS=llama3.2`) before treating a llama3.2:3b-only flag as a
+        real blocker. A flip on a **stronger** model is a different story - treat
+        that as the real signal it's meant to be.
 
 ## 4. Version bump
 
@@ -111,3 +124,28 @@ only trigger.
   and ship a patch.
 - **`frozen-lockfile` fails in CI but not locally:** your local `node_modules` is
   stale. `rm -rf node_modules && pnpm install --frozen-lockfile` to see what CI sees.
+
+## Releasing `@usepolyglot/core`
+
+Mechanically identical to steps 1-7 above, with three differences: everything is
+scoped to `packages/core` instead of `packages/cli`, the tag prefix is `core-v`
+instead of plain `v` (so the two release trains can never collide or misfire each
+other's workflow), and the triggered workflow is `.github/workflows/release-core.yml`
+instead of `release.yml`. Concretely:
+
+- Changesets for core-only changes still go in `.changeset/*.md` as usual;
+  `pnpm changeset:version` bumps whichever packages have pending changesets, cli and
+  core independently.
+- Version bump commit: `git add packages/core/package.json packages/core/CHANGELOG.md .changeset/`
+  (plus cli's files too if both had pending changesets in the same batch - they can
+  ship in the same PR/commit even though they tag and publish separately).
+- Tag: `V="core-v$(node -p "require('./packages/core/package.json').version")"`,
+  then `git tag "$V" && git push origin "$V"`.
+- **First publish is manual, same as cli was**: `@usepolyglot/core` has to already
+  exist on npm before a Trusted Publisher can be configured for it (repo
+  `giuseppe-sirigu/polyglot`, workflow `release-core.yml`, environment `release` -
+  see CONTRIBUTING.md's npm trusted-publishing section for the cli-equivalent
+  one-time setup). Until that first manual `npm publish` happens, `release-core.yml`
+  has nothing to authenticate against and any tag push will just fail at the OIDC
+  exchange step - expected, not a bug, the first time through.
+- Verify with `npm view @usepolyglot/core version` / `dist-tags` the same way as cli.

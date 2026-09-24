@@ -173,8 +173,15 @@ export {
 export type { ModelPricing } from "./pricing/pricing.js";
 export { buildToolSystemPrompt } from "./tool-protocol/grammar.js";
 export { ToolCallStreamParser } from "./tool-protocol/stream-parser.js";
-export { finalize, resolveEnvelope } from "./tool-protocol/resolve.js";
-export type { ParsedToolCall, ToolCallParseError } from "./tool-protocol/types.js";
+export { finalize, resolveEnvelope, resolveEnvelopeFromRepair } from "./tool-protocol/resolve.js";
+export type {
+  ParsedToolCall,
+  ToolCallParseError,
+  RawToolCallEnvelope,
+  ParserEvent,
+} from "./tool-protocol/types.js";
+export { repairJson, repairJsonFastPath, repairJsonSlowPath } from "./tool-protocol/json-repair.js";
+export type { RepairResult, RepairStrategy } from "./tool-protocol/json-repair.js";
 export {
   buildEnvelopeSchema,
   parseStructuredEnvelope,

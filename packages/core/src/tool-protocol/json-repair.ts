@@ -54,27 +54,44 @@ function dropTrailingComma(s: string): string {
   return t.endsWith(",") ? t.slice(0, -1) : t;
 }
 
+/** `wrapper_stripped` and `clean` are deterministic/high-confidence; `jsonrepair` is medium;
+ * `loose_kv`/`trailing_blob` are low-confidence and worth flagging for review - the repair
+ * audit's "confidence" signal (see the gateway's audit_repairs table). */
+export type RepairStrategy = "clean" | "wrapper_stripped" | "jsonrepair" | "loose_kv" | "trailing_blob";
+
 export type RepairResult =
-  | { ok: true; value: unknown; repaired: boolean }
+  | { ok: true; value: unknown; repaired: boolean; strategy: RepairStrategy }
   | { ok: false; error: string };
 
-/** Tries increasingly aggressive strategies to coerce near-miss JSON text into a parsed object.
- * `repaired` is false only for input that was already clean JSON (a bare `JSON.parse` of the
- * verbatim body); any wrapper strip, jsonrepair pass, or looser fallback sets it true so the
- * caller can flag the call as repaired and keep the raw form for the audit trail. */
-export function repairJson(text: string): RepairResult {
+/** The cheap part of `repairJson`: wrapper-strip + one `JSON.parse`, what every well-formed
+ * tool call takes. Returns `null` specifically to mean "this needs the expensive part"
+ * (`repairJsonSlowPath`) - never for the empty-body case, which is resolved here since it
+ * needs no repair work at all. Split out so a caller under concurrent load (the gateway) can
+ * keep this inline on the main thread and only dispatch to a worker thread when it returns
+ * null, instead of every call paying worker-thread dispatch overhead. */
+export function repairJsonFastPath(text: string): RepairResult | null {
   const stripped = stripEnclosingWrapper(text);
-  const trimmed = stripped;
   const wrapperStripped = stripped !== text.trim();
-  if (trimmed.length === 0) {
+  if (stripped.length === 0) {
     return { ok: false, error: "empty body" };
   }
-
   try {
-    return { ok: true, value: JSON.parse(trimmed), repaired: wrapperStripped };
+    return {
+      ok: true,
+      value: JSON.parse(stripped),
+      repaired: wrapperStripped,
+      strategy: wrapperStripped ? "wrapper_stripped" : "clean",
+    };
   } catch {
-    // fall through to repair
+    return null;
   }
+}
+
+/** The expensive part: `jsonrepair()` plus the regex fallbacks. Only worth calling once
+ * `repairJsonFastPath` has already returned null - re-strips the wrapper itself so it can be
+ * called standalone (e.g. from inside a worker thread, which only receives the raw text). */
+export function repairJsonSlowPath(text: string): RepairResult {
+  const trimmed = stripEnclosingWrapper(text);
 
   try {
     const repaired = jsonrepair(trimmed);
@@ -87,14 +104,14 @@ export function repairJson(text: string): RepairResult {
       value.length > 0 &&
       value.every((v) => v && typeof v === "object" && !Array.isArray(v))
     ) {
-      return { ok: true, value: Object.assign({}, ...value), repaired: true };
+      return { ok: true, value: Object.assign({}, ...value), repaired: true, strategy: "jsonrepair" };
     }
     // jsonrepair's last resort for text with no JSON structure at all is to quote-wrap
     // it into a bare string - that's not a useful "repair" for a tool-call body, which
     // is always meant to be an object, so treat it the same as a failed repair and keep
     // trying the looser fallback below instead of accepting a wrapped string verbatim.
     if (!(typeof value === "string" && value === trimmed)) {
-      return { ok: true, value, repaired: true };
+      return { ok: true, value, repaired: true, strategy: "jsonrepair" };
     }
   } catch {
     // fall through to regex fallback
@@ -102,15 +119,26 @@ export function repairJson(text: string): RepairResult {
 
   const fallback = extractLooseKeyValuePairs(trimmed);
   if (fallback) {
-    return { ok: true, value: fallback, repaired: true };
+    return { ok: true, value: fallback, repaired: true, strategy: "loose_kv" };
   }
 
   const blob = extractTrailingBlobField(trimmed);
   if (blob) {
-    return { ok: true, value: blob, repaired: true };
+    return { ok: true, value: blob, repaired: true, strategy: "trailing_blob" };
   }
 
   return { ok: false, error: "could not parse body as JSON, even after repair" };
+}
+
+/** Tries increasingly aggressive strategies to coerce near-miss JSON text into a parsed object.
+ * `repaired` is false only for input that was already clean JSON (a bare `JSON.parse` of the
+ * verbatim body); any wrapper strip, jsonrepair pass, or looser fallback sets it true so the
+ * caller can flag the call as repaired and keep the raw form for the audit trail.
+ *
+ * Composes the two halves above - unchanged public behavior for every existing caller (the
+ * CLI's single-request-at-a-time path has no reason to split fast/slow itself). */
+export function repairJson(text: string): RepairResult {
+  return repairJsonFastPath(text) ?? repairJsonSlowPath(text);
 }
 
 function strictObject(text: string): Record<string, unknown> | null {
