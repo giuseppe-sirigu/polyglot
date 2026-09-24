@@ -57,7 +57,12 @@ function dropTrailingComma(s: string): string {
 /** `wrapper_stripped` and `clean` are deterministic/high-confidence; `jsonrepair` is medium;
  * `loose_kv`/`trailing_blob` are low-confidence and worth flagging for review - the repair
  * audit's "confidence" signal (see the gateway's audit_repairs table). */
-export type RepairStrategy = "clean" | "wrapper_stripped" | "jsonrepair" | "loose_kv" | "trailing_blob";
+export type RepairStrategy =
+  | "clean"
+  | "wrapper_stripped"
+  | "jsonrepair"
+  | "loose_kv"
+  | "trailing_blob";
 
 export type RepairResult =
   | { ok: true; value: unknown; repaired: boolean; strategy: RepairStrategy }
@@ -104,7 +109,12 @@ export function repairJsonSlowPath(text: string): RepairResult {
       value.length > 0 &&
       value.every((v) => v && typeof v === "object" && !Array.isArray(v))
     ) {
-      return { ok: true, value: Object.assign({}, ...value), repaired: true, strategy: "jsonrepair" };
+      return {
+        ok: true,
+        value: Object.assign({}, ...value),
+        repaired: true,
+        strategy: "jsonrepair",
+      };
     }
     // jsonrepair's last resort for text with no JSON structure at all is to quote-wrap
     // it into a bare string - that's not a useful "repair" for a tool-call body, which
