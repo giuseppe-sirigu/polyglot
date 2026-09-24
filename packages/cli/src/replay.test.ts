@@ -23,6 +23,10 @@ const baseArgs: CliArgs = {
   replay: true,
   replayExecute: false,
   replayOutputFormat: "text",
+  report: false,
+  reportDays: 7,
+  reportIncludeRawSamples: false,
+  reportApproveRawSamples: false,
 };
 
 let home: string;

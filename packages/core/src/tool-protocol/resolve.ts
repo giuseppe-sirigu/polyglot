@@ -1,5 +1,5 @@
 import type { JsonSchema, ToolRegistry } from "../tools/types.js";
-import { repairJson } from "./json-repair.js";
+import { type RepairStrategy, repairJson } from "./json-repair.js";
 import type { ParsedToolCall, RawToolCallEnvelope, ToolCallParseError } from "./types.js";
 import { validateAgainstSchema } from "./validator.js";
 
@@ -142,7 +142,7 @@ function resolveXmlEnvelope(
     };
   }
 
-  return finalize(envelope, declaredName, input, registry, repaired.repaired);
+  return finalize(envelope, declaredName, input, registry, repaired.repaired, repaired.strategy);
 }
 
 function resolveFencedEnvelope(
@@ -173,7 +173,7 @@ function resolveFencedEnvelope(
     firstObjectField(repaired.value, ARGS_ALIASES) ??
     stripAliasKeys(repaired.value, [...NAME_ALIASES, ...ARGS_ALIASES]);
 
-  return finalize(envelope, name, args, registry, repaired.repaired);
+  return finalize(envelope, name, args, registry, repaired.repaired, repaired.strategy);
 }
 
 export function finalize(
@@ -182,6 +182,7 @@ export function finalize(
   input: unknown,
   registry: ToolRegistry,
   repaired = false,
+  strategy?: RepairStrategy,
 ): ParsedToolCall | ToolCallParseError {
   const { tool, correctedFrom } = resolveToolName(requestedName, registry);
   if (!tool) {
@@ -208,6 +209,7 @@ export function finalize(
     raw: source.raw,
     ...(correctedFrom ? { correctedFromName: correctedFrom } : {}),
     ...(repaired || correctedFrom ? { repaired: true } : {}),
+    ...(strategy ? { strategy } : {}),
   };
 }
 

@@ -316,6 +316,11 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
           input: resolved.input,
           correctedFromName: resolved.correctedFromName,
           ...(resolved.repaired ? { repaired: true, rawCall: resolved.raw } : {}),
+          // Recorded regardless of `repaired` (unlike rawCall) - "clean" is itself a strategy
+          // value, and the digest's per-model strategy breakdown needs the clean count too,
+          // not just the repaired ones. Mirrors the Gateway's own audit_repairs, which records
+          // strategy on every call, not only repaired ones.
+          ...(resolved.strategy ? { strategy: resolved.strategy } : {}),
         });
       }
     }

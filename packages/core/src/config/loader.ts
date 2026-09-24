@@ -154,6 +154,21 @@ export function setTelemetryPreference(value: boolean): void {
   writeGlobalSettings({ telemetry: value });
 }
 
+/** Undefined = the user has never been asked. Mirrors getTelemetryPreference - whether to
+ * report to a control plane is a per-machine choice, same reasoning. Consent is only asked
+ * for at all when `POLYGLOT_CONTROL_PLANE_URL` is actually set (see App.tsx) - there's
+ * nothing to opt into otherwise. */
+export function getCentralAuditPreference(): boolean | undefined {
+  const value = readRawSettingsFile(globalSettingsPath()).centralAudit;
+  return typeof value === "boolean" ? value : undefined;
+}
+
+/** Merges just the centralAudit key into the global settings file. Mirrors
+ * setTelemetryPreference. */
+export function setCentralAuditPreference(value: boolean): void {
+  writeGlobalSettings({ centralAudit: value });
+}
+
 /** Shallow-merges `patch` into `~/.polyglot/settings.json`, creating the file (and its
  * directory) if needed and leaving every other key - including ones this schema doesn't know
  * about - untouched. Used by `polyglot init` and `setAutoUpdatePreference`. */

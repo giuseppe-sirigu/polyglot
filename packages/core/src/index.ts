@@ -31,8 +31,18 @@ export {
   hashToolInput,
   auditDir,
   pruneAuditLogs,
+  readAuditEvents,
 } from "./audit/audit-log.js";
 export type { AuditEvent, AuditSink, AuditEventContext } from "./audit/audit-log.js";
+export { createCentralAuditReporter } from "./audit/central-audit-reporter.js";
+export type { CentralAuditReporter } from "./audit/central-audit-reporter.js";
+export { generateReliabilityDigest } from "./report/generate.js";
+export type { ReliabilityDigest, ModelBreakdown, FlaggedSample } from "./report/generate.js";
+export { buildRedactionPreview } from "./report/redaction-preview.js";
+export type { RedactedSample } from "./report/redaction-preview.js";
+export { renderDigestMarkdown } from "./report/render.js";
+export { repairRecordsFromAuditEvents } from "./report/from-audit-events.js";
+export type { RepairRecordInput } from "./report/types.js";
 export {
   createTelemetrySink,
   telemetryEventFromAgentEvent,
@@ -52,6 +62,8 @@ export {
   setAutoUpdatePreference,
   getTelemetryPreference,
   setTelemetryPreference,
+  getCentralAuditPreference,
+  setCentralAuditPreference,
   writeGlobalSettings,
   DEFAULT_MAX_CONTEXT_TOKENS,
 } from "./config/loader.js";
