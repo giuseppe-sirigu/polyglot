@@ -36,7 +36,7 @@
     "jsonrepair": "^3.11.2",
     "minimatch": "^10.0.1",
     "openai": "^7.13.0",
-    "zod": "^4.5.4"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
