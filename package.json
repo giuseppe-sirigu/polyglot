@@ -25,12 +25,12 @@
     "publish-core:manual": "pnpm --filter @usepolyglot/core build && d=$(mktemp -d) && pnpm --filter @usepolyglot/core pack --pack-destination \"$d\" && npm publish \"$d\"/usepolyglot-core-*.tgz --access public"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@changesets/cli": "^3.0.1",
-    "@types/node": "^22.10.2",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "vitest": "^4.1.11"
+    "@biomejs/biome": "^2.5.14",
+    "@changesets/cli": "^3.0.3",
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["@biomejs/biome", "esbuild"],
