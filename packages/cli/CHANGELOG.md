@@ -1,5 +1,14 @@
 # @usepolyglot/cli
 
+## 0.13.1
+
+### Patch Changes
+
+- Picks up `@usepolyglot/core@0.3.1`'s fix for `ToolCallStreamParser` failing to close a
+  tool-call envelope when a model closes with `</tool_result>` instead of `</tool_call>`.
+  Previously this left the envelope unterminated, causing the parser to buffer everything
+  after it - including subsequent, correctly formed tool calls - as one unparseable body.
+
 ## 0.13.0
 
 ### Minor Changes
