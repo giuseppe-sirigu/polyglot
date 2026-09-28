@@ -53,10 +53,28 @@ export const SCENARIO_MODELS: ScenarioModelEntry[] = [
     baseURL: "http://localhost:11434/v1",
     label: "gpt-oss 20B",
   },
+];
+
+/**
+ * Heavy, hardware-constrained scale-check models - deliberately kept OUT of
+ * `SCENARIO_MODELS` so they never run as part of the unconditional default matrix.
+ * Reachable only via an explicit `SCENARIO_MODELS=<model>` filter (see
+ * `scripts/scenario-matrix.ts`'s `selectModels()`, which searches this array too once a
+ * filter is given).
+ *
+ * Why this split exists (found the hard way, 2026-09-28): with `qwen2.5-coder:32b` briefly
+ * living in the main array, a full default-matrix run interleaved it with the five fast
+ * models - each switch meant Ollama swapping a 21GB, partially CPU-offloaded model in and
+ * out of VRAM. The result was materially worse than testing 32B alone: the same scenarios
+ * that hit `noRunaway` at 2-10 of the 40-call budget in isolation hit it at 10-24 calls when
+ * interleaved. Testing a slow model back-to-back with fast ones doesn't just take longer, it
+ * changes the result - so it needs its own explicit, isolated run, not a spot in the default
+ * sweep every release gate triggers.
+ */
+export const SCENARIO_SCALE_CHECK_MODELS: ScenarioModelEntry[] = [
   // Added 2026-09-25 to test whether the tool-call-repair gap (see the qwen2.5-coder
   // 7B/14B numbers above and the published benchmark) narrows or closes at larger
-  // scale within the same model family - not yet run as part of the default matrix,
-  // reachable via `SCENARIO_MODELS=qwen2.5-coder:32b`.
+  // scale within the same model family.
   {
     provider: "openai-compatible",
     model: "qwen2.5-coder:32b",
@@ -66,6 +84,7 @@ export const SCENARIO_MODELS: ScenarioModelEntry[] = [
     // captured 32B failure was noRunaway, and every one at 2-10 of the 40-call budget - nowhere
     // near the call cap, so it can only have been the 60s wall clock. 32B is partially
     // CPU-offloaded on 16GB VRAM (confirmed via `ollama ps`), same root cause as the 27B model.
+    // Only accurate when run in isolation - see the module-level comment above.
     budget: { wallMs: 300_000 },
   },
   // A second, different-family scale check, for the same reason - only meaningful if
@@ -90,7 +109,7 @@ export const SCENARIO_MODELS: ScenarioModelEntry[] = [
     // action - real per-call latency is well above what the 60s default assumes. Confirmed live
     // 2026-09-26: locate-and-fix hit noRunaway at only 8/40 model calls (nowhere near the call
     // cap), mid a genuinely correct, on-track fix - the wall clock, not the model, was the
-    // limiting factor.
+    // limiting factor. Only accurate when run in isolation - see the module-level comment above.
     budget: { wallMs: 300_000 },
   },
 ];

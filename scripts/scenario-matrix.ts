@@ -25,6 +25,7 @@ import {
 } from "../packages/core/src/index.js";
 import {
   SCENARIO_MODELS,
+  SCENARIO_SCALE_CHECK_MODELS,
   type ScenarioModelEntry,
 } from "../packages/core/src/testing/scenario-models.js";
 import { runScenarioAgainst } from "../packages/core/src/testing/scenario-runner.js";
@@ -36,11 +37,20 @@ const RESULTS_LOG = join(REPO_ROOT, "scenario-results.jsonl");
 const MARKDOWN_OUT = join(REPO_ROOT, "scenario-matrix.md");
 
 function selectModels(): ScenarioModelEntry[] {
-  let models: ScenarioModelEntry[] = [...SCENARIO_MODELS];
-
   const only = process.env.SCENARIO_MODELS?.split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+
+  // No filter -> only the fast default set runs. A heavy scale-check model (32B, 70B,
+  // Qwen3.8-27B) never joins the unconditional matrix on its own - see the module-level
+  // comment on SCENARIO_SCALE_CHECK_MODELS for why interleaving it with fast models
+  // materially worsens its own result, not just the runtime. An explicit filter opts a
+  // caller into the scale-check pool too, so `SCENARIO_MODELS=qwen2.5-coder:32b` still works
+  // exactly as before, just never by accident.
+  let models: ScenarioModelEntry[] = only
+    ? [...SCENARIO_MODELS, ...SCENARIO_SCALE_CHECK_MODELS]
+    : [...SCENARIO_MODELS];
+
   if (only && only.length > 0) {
     const base = (s: string) => s.split(":")[0];
     // An exact "provider:tag" filter (e.g. "qwen2.5-coder:32b") must match only that one
