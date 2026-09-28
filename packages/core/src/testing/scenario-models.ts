@@ -1,5 +1,5 @@
-import type { ScenarioBudget } from "./agent-scenario.js";
 import type { ModelEntry } from "../config/schema.js";
+import type { ScenarioBudget } from "./agent-scenario.js";
 
 /**
  * A `ModelEntry` plus scenario-matrix-only extras. `budget` is an optional per-model override

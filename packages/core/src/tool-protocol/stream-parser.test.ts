@@ -125,7 +125,8 @@ describe("ToolCallStreamParser", () => {
   });
 
   it("closes each call independently when a model mixes </tool_result> and </tool_call> closers", () => {
-    const text = '<tool_call name="a">{"x":1}</tool_result>\n<tool_call name="b">{"y":2}</tool_call>';
+    const text =
+      '<tool_call name="a">{"x":1}</tool_result>\n<tool_call name="b">{"y":2}</tool_call>';
     const events = runChunkedEveryWay(text);
     const envelopes = events.filter((e) => e.type === "envelope");
     expect(envelopes).toHaveLength(2);

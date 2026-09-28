@@ -24,8 +24,8 @@ import {
   resolveEngineConfigForModel,
 } from "../packages/core/src/index.js";
 import {
-  type ScenarioModelEntry,
   SCENARIO_MODELS,
+  type ScenarioModelEntry,
 } from "../packages/core/src/testing/scenario-models.js";
 import { runScenarioAgainst } from "../packages/core/src/testing/scenario-runner.js";
 import { SCENARIOS } from "../packages/core/src/testing/scenarios.js";
