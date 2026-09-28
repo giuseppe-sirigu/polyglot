@@ -3,10 +3,12 @@ import type { ParserEvent, RawToolCallEnvelope } from "./types.js";
 const START_XML = /<tool[_-]?call\b/gi;
 const START_FENCE = /```[ \t]*(tool_call|toolcall)\b[ \t]*\n/gi;
 // Accepts "</tool_call>" as documented, but also the shorter "</tool>" some models default to
-// when abbreviating a closing tag - without this, a mismatched close never terminates the
-// envelope, so the parser keeps consuming everything after it (including every subsequent tool
-// call in the same message) as one giant unparseable body until the stream ends.
-const END_XML = /<\/[ \t]*tool(?:[_-]?call)?[ \t]*>/i;
+// when abbreviating a closing tag, and "</tool_result>" (seen live on qwen3.8-27b: a model
+// that blends its own natively-trained closing tag with our prompted <tool_call> convention) -
+// without this, a mismatched close never terminates the envelope, so the parser keeps consuming
+// everything after it (including every subsequent tool call in the same message) as one giant
+// unparseable body until the stream ends.
+const END_XML = /<\/[ \t]*tool(?:[_-]?(?:call|result))?[ \t]*>/i;
 const END_FENCE = /\n?```[ \t]*(\n|$)/;
 const NAME_ATTR = /name\s*=\s*["']([^"']*)["']/i;
 

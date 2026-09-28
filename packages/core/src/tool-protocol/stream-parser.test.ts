@@ -113,6 +113,24 @@ describe("ToolCallStreamParser", () => {
     expect(envelopes).toHaveLength(2);
   });
 
+  it("accepts a closing </tool_result> tag (a model blending its own native closer with our convention)", () => {
+    const text = '<tool_call name="grep">\n{"pattern": "unused"}\n</tool_result>\nLet me verify.';
+    const events = runChunkedEveryWay(text);
+    expect(events.map((e) => e.type)).toEqual(["envelope", "text"]);
+    const e = events[0];
+    if (e?.type === "envelope") {
+      expect(e.envelope.body.trim()).toBe('{"pattern": "unused"}');
+    }
+    expect(textOf(events)).toBe("\nLet me verify.");
+  });
+
+  it("closes each call independently when a model mixes </tool_result> and </tool_call> closers", () => {
+    const text = '<tool_call name="a">{"x":1}</tool_result>\n<tool_call name="b">{"y":2}</tool_call>';
+    const events = runChunkedEveryWay(text);
+    const envelopes = events.filter((e) => e.type === "envelope");
+    expect(envelopes).toHaveLength(2);
+  });
+
   it("swallows a stray, never-opened fence marker right after </tool_call>", () => {
     const text = '<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_CALL>\n```\n\n### Next up';
     const events = runChunkedEveryWay(text);

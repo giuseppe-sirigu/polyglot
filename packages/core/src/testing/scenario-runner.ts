@@ -1,6 +1,11 @@
 import type { AgentEvent } from "../agent/events.js";
 import type { ProviderAdapter } from "../providers/types.js";
-import { type ScenarioResult, type ScenarioStopReason, runScenario } from "./agent-scenario.js";
+import {
+  type ScenarioBudget,
+  type ScenarioResult,
+  type ScenarioStopReason,
+  runScenario,
+} from "./agent-scenario.js";
 import type { Scenario } from "./scenarios.js";
 
 export interface InvariantResult {
@@ -44,7 +49,7 @@ export function outcomePassed(o: ScenarioOutcome): boolean {
 export async function runScenarioAgainst(
   scenario: Scenario,
   model: string[] | ProviderAdapter,
-  opts: { modelId?: string } = {},
+  opts: { modelId?: string; budget?: ScenarioBudget } = {},
 ): Promise<ScenarioOutcome> {
   let result: ScenarioResult;
   try {
@@ -56,7 +61,10 @@ export async function runScenarioAgainst(
       files: scenario.files,
       subAgents: scenario.subAgents,
       maxSteps: scenario.maxSteps,
-      budget: scenario.budget,
+      // A per-model override (e.g. a slower/larger model on this hardware) takes precedence
+      // over the scenario's own default - it reflects the caller's known runtime constraints,
+      // not something about the task itself.
+      budget: opts.budget ?? scenario.budget,
     });
   } catch (err) {
     return {

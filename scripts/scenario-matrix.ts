@@ -20,11 +20,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type EngineConfig,
-  type ModelEntry,
   createProviderAdapter,
   resolveEngineConfigForModel,
 } from "../packages/core/src/index.js";
-import { SCENARIO_MODELS } from "../packages/core/src/testing/scenario-models.js";
+import {
+  type ScenarioModelEntry,
+  SCENARIO_MODELS,
+} from "../packages/core/src/testing/scenario-models.js";
 import { runScenarioAgainst } from "../packages/core/src/testing/scenario-runner.js";
 import { SCENARIOS } from "../packages/core/src/testing/scenarios.js";
 
@@ -33,15 +35,22 @@ const CAPTURE_DIR = join(REPO_ROOT, "packages/core/src/testing/captured-failures
 const RESULTS_LOG = join(REPO_ROOT, "scenario-results.jsonl");
 const MARKDOWN_OUT = join(REPO_ROOT, "scenario-matrix.md");
 
-function selectModels(): (ModelEntry & { label?: string })[] {
-  let models: (ModelEntry & { label?: string })[] = [...SCENARIO_MODELS];
+function selectModels(): ScenarioModelEntry[] {
+  let models: ScenarioModelEntry[] = [...SCENARIO_MODELS];
 
   const only = process.env.SCENARIO_MODELS?.split(",")
     .map((s) => s.trim())
     .filter(Boolean);
   if (only && only.length > 0) {
     const base = (s: string) => s.split(":")[0];
-    models = models.filter((m) => only.some((t) => base(t) === base(m.model)));
+    // An exact "provider:tag" filter (e.g. "qwen2.5-coder:32b") must match only that one
+    // model - matching on base name alone would also pull in every other registered size
+    // of the same family (7b/14b/32b all share base "qwen2.5-coder"), which is wrong when
+    // the caller asked for one specific tag. A bare family name (no colon) keeps the old
+    // "select every size of this family" convenience.
+    models = models.filter((m) =>
+      only.some((t) => (t.includes(":") ? t === m.model : base(t) === base(m.model))),
+    );
   }
 
   const baseOverride = process.env.SCENARIO_BASE_URL;
@@ -134,7 +143,7 @@ function diffRuns(
 
 function renderMarkdown(opts: {
   runStamp: string;
-  models: (ModelEntry & { label?: string })[];
+  models: ScenarioModelEntry[];
   skippedReason: Map<string, string>;
   summary: RunSummary;
   prev: PriorRun | null;
@@ -251,7 +260,10 @@ async function main() {
         continue;
       }
 
-      const outcome = await runScenarioAgainst(scenario, adapter, { modelId: entry.model });
+      const outcome = await runScenarioAgainst(scenario, adapter, {
+        modelId: entry.model,
+        budget: entry.budget,
+      });
       const cells = invNames.map((n) => {
         const r = outcome.invariantResults.find((x) => x.name === n);
         if (!r) return pad(DASH, colW);
