@@ -308,3 +308,148 @@ describe("ToolCallStreamParser - closing tag with attributes", () => {
     expect(events.at(-1)).toEqual({ type: "text", text: "\nok" });
   });
 });
+
+describe("ToolCallStreamParser - Devstral's improvised tags (captured live, diagnosis round 2)", () => {
+  const toolNames = ["read_file", "edit_file", "bash", "glob", "grep"];
+
+  function parseChunkedEveryWay(text: string): ParserEvent[] {
+    const once = (chunks: string[]) => {
+      const parser = new ToolCallStreamParser({ toolNames });
+      return mergeAdjacentText([...chunks.flatMap((c) => parser.push(c)), ...parser.flush()]);
+    };
+    const first = once([text]);
+    for (let splitAt = 1; splitAt < text.length; splitAt++) {
+      expect(once([text.slice(0, splitAt), text.slice(splitAt)]), `split at ${splitAt}`).toEqual(
+        first,
+      );
+    }
+    return first;
+  }
+  const envelopes = (events: ParserEvent[]) =>
+    events.flatMap((e) => (e.type === "envelope" ? [e.envelope] : []));
+
+  it("reads a self-closing tag's attributes as the arguments - and no longer swallows the next call", () => {
+    const text =
+      '<glob pattern="**/service.json"/>\n<tool_call name="grep">\n{"pattern": "port"}\n</tool_call>';
+    const envs = envelopes(parseChunkedEveryWay(text));
+    expect(envs.map((e) => [e.declaredName, e.body])).toEqual([
+      ["glob", '{"pattern":"**/service.json"}'],
+      ["grep", '\n{"pattern": "port"}\n'],
+    ]);
+  });
+
+  it("unescapes quotes in attribute values", () => {
+    const envs = envelopes(parseChunkedEveryWay('<bash command="find . -name \\"*.json\\""/>'));
+    expect(JSON.parse(envs[0]?.body ?? "")).toEqual({ command: 'find . -name "*.json"' });
+  });
+
+  it('recognises <glob_call name="glob">...</glob_call>', () => {
+    const envs = envelopes(
+      parseChunkedEveryWay('<glob_call name="glob">\n{"pattern": "**/*util*.mjs"}\n</glob_call>'),
+    );
+    expect(envs.map((e) => [e.declaredName, e.body.trim()])).toEqual([
+      ["glob", '{"pattern": "**/*util*.mjs"}'],
+    ]);
+  });
+
+  it("recognises a name with a dropped < (glob>) followed by JSON on the next line", () => {
+    const text =
+      'Let me start by examining the current state of these files.glob>\n{"pattern": "**/*.mjs"}';
+    const envs = envelopes(parseChunkedEveryWay(text));
+    expect(envs.map((e) => [e.declaredName, e.body])).toEqual([
+      ["glob", '{"pattern": "**/*.mjs"}'],
+    ]);
+  });
+
+  it("recognises a tool-name tag mid-sentence when JSON follows, cut-off close and all", () => {
+    const text =
+      'Now I\'ll rename it in math.mjs<edit_file name="edit_file">\n{"path": "math.mjs", "old_string": "add", "new_string": "sum"}\n</edit_file';
+    const envs = envelopes(parseChunkedEveryWay(text));
+    expect(envs).toHaveLength(1);
+    expect(envs[0]?.declaredName).toBe("edit_file");
+    expect(JSON.parse(envs[0]?.body ?? "")).toEqual({
+      path: "math.mjs",
+      old_string: "add",
+      new_string: "sum",
+    });
+  });
+
+  it("leaves a tool-name tag mentioned mid-sentence as text when nothing call-like follows", () => {
+    const text = "I would use <glob> here and then stop.";
+    expect(parseChunkedEveryWay(text)).toEqual([{ type: "text", text }]);
+  });
+});
+
+describe("ToolCallStreamParser - attribute arguments with an explicit close (captured live on Devstral)", () => {
+  it("uses the attributes when <glob pattern=...></glob> has an empty body", () => {
+    const toolNames = ["glob", "bash"];
+    const text = '<glob pattern="**/service.json"></glob>';
+    const first = (() => {
+      const p = new ToolCallStreamParser({ toolNames });
+      return [...p.push(text), ...p.flush()];
+    })();
+    for (let splitAt = 1; splitAt < text.length; splitAt++) {
+      const p = new ToolCallStreamParser({ toolNames });
+      const events = [
+        ...p.push(text.slice(0, splitAt)),
+        ...p.push(text.slice(splitAt)),
+        ...p.flush(),
+      ];
+      expect(
+        events.filter((e) => e.type === "envelope"),
+        `split at ${splitAt}`,
+      ).toEqual(first.filter((e) => e.type === "envelope"));
+    }
+    const env = first.find((e) => e.type === "envelope");
+    expect(env?.type === "envelope" && [env.envelope.declaredName, env.envelope.body]).toEqual([
+      "glob",
+      '{"pattern":"**/service.json"}',
+    ]);
+  });
+
+  it("keeps a non-empty body over the attributes", () => {
+    const p = new ToolCallStreamParser({ toolNames: ["glob"] });
+    const events = [...p.push('<glob name="glob">\n{"pattern": "a"}\n</glob>'), ...p.flush()];
+    const env = events.find((e) => e.type === "envelope");
+    expect(env?.type === "envelope" && env.envelope.body.trim()).toBe('{"pattern": "a"}');
+  });
+});
+
+describe("ToolCallStreamParser - invented tag suffixes and glued names (captured live on Devstral, 5-trial run)", () => {
+  const toolNames = ["read_file", "edit_file", "glob"];
+  const parse = (text: string) => {
+    const once = (chunks: string[]) => {
+      const p = new ToolCallStreamParser({ toolNames });
+      return mergeAdjacentText([...chunks.flatMap((c) => p.push(c)), ...p.flush()]);
+    };
+    const first = once([text]);
+    for (let i = 1; i < text.length; i++) {
+      expect(once([text.slice(0, i), text.slice(i)]), `split at ${i}`).toEqual(first);
+    }
+    return first.flatMap((e) => (e.type === "envelope" ? [e.envelope] : []));
+  };
+
+  it("recognises <glob_pattern>{json}</glob_pattern>", () => {
+    const envs = parse(
+      'I need to find util.mjs first.\n\n<glob_pattern>\n{"pattern": "**/util.mjs"}\n</glob_pattern>',
+    );
+    expect(envs.map((e) => [e.declaredName, e.body.trim()])).toEqual([
+      ["glob", '{"pattern": "**/util.mjs"}'],
+    ]);
+  });
+
+  it("leaves a suffixed tag with no JSON after it as text", () => {
+    expect(parse("<glob_examples>\nsee below\n</glob_examples>")).toEqual([]);
+  });
+
+  it("recognises edit_file> glued onto the previous word", () => {
+    const envs = parse(
+      '2. Update the import and usage in main.mjsedit_file>\n{"path": "math.mjs", "old_string": "add", "new_string": "sum"}',
+    );
+    expect(envs.map((e) => e.declaredName)).toEqual(["edit_file"]);
+  });
+
+  it("does not match a tool name inside a word without the > marker", () => {
+    expect(parse('the config.jsonglob{"x": 1} line')).toEqual([]);
+  });
+});

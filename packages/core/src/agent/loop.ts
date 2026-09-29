@@ -2,7 +2,7 @@ import type { HookDispatcher } from "../hooks/dispatcher.js";
 import type { PermissionGate } from "../permissions/gate.js";
 import type { ProviderAdapter } from "../providers/types.js";
 import type { Message, Session } from "../session/types.js";
-import { finalize, resolveEnvelope } from "../tool-protocol/resolve.js";
+import { finalize, resolveEnvelope, resolveTrailingArguments } from "../tool-protocol/resolve.js";
 import { ToolCallStreamParser } from "../tool-protocol/stream-parser.js";
 import {
   buildEnvelopeSchema,
@@ -272,6 +272,10 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     } else {
       const envelopes = extractEnvelopes(fullText, tools.names());
       resolutions = envelopes.map((envelope) => resolveEnvelope(envelope, tools));
+      if (resolutions.length === 0) {
+        const trailing = resolveTrailingArguments(fullText, tools);
+        if (trailing) resolutions = [trailing];
+      }
     }
 
     onEvent({ type: "turn_end", stopReason });

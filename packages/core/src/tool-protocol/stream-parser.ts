@@ -60,6 +60,9 @@ type Mode =
       end?: RegExp;
       /** A ```json fence: only an envelope if its body names a known tool, else plain text. */
       jsonFenceCandidate?: boolean;
+      /** Arguments written as attributes on a tool-name tag; used when the body is empty
+       * (`<glob pattern="*.json"></glob>`, seen live on Devstral). */
+      attrArgs?: Record<string, string>;
     }
   | { kind: "bare"; declaredName: string; startRaw: string };
 
@@ -144,9 +147,14 @@ export class ToolCallStreamParser {
         .sort((a, b) => b.length - a.length)
         .map(escapeRegExp)
         .join("|");
-      this.startNameTag = new RegExp(`<(${alt})(?=[\\s>])[^>\\n]*>`, "gi");
+      // `<glob>`, `<glob_call name="glob">`, self-closing `<glob pattern="*"/>` (Devstral).
+      // Also an invented suffix (`<glob_pattern>`, Devstral) - accepted only with JSON after it.
+      this.startNameTag = new RegExp(`<(${alt})(?:[_-]([a-z]+))?(?=[\\s>/])[^>\\n]*>`, "gi");
+      // `glob{"`, `glob {"`, `glob>\n{"` (a dropped `<`), `[TOOL_CALLS]glob[ARGS]{"`.
       this.startBare = new RegExp(
-        `(?:\\[TOOL_CALLS\\][ \\t]*)?\\b(${alt})(?:\\[ARGS\\])?[ \\t]*(?=\\{[ \\t\\n]*")`,
+        // Second branch: glued onto the previous word (`main.mjsedit_file>{`, Devstral) - only in
+        // the explicit `name>` / `name[ARGS]` forms, so a word merely ending in a tool name stays text.
+        `(?:\\[TOOL_CALLS\\][ \\t]*)?(?:\\b(${alt})(?:\\[ARGS\\]|>)?|(${alt})(?:\\[ARGS\\]|>))[ \\t]*\\n?[ \\t]*(?=\\{[ \\t\\n]*")`,
         "g",
       );
       const longest = Math.max(...names.map((n) => n.length));
@@ -190,7 +198,9 @@ export class ToolCallStreamParser {
       const envelope: RawToolCallEnvelope = {
         variant: this.mode.variant,
         declaredName: this.mode.declaredName,
-        body: this.buffer,
+        // A closing tag cut off by the end of the stream (`</edit_file` with no `>`, seen
+        // live on Devstral) is not part of the arguments.
+        body: this.buffer.replace(/<\/[\w-]*[ \t]*$/, ""),
         raw: this.mode.startRaw + this.buffer,
       };
       events.push({ type: "envelope", envelope });
@@ -253,12 +263,7 @@ export class ToolCallStreamParser {
           : null,
         "jsonFence",
       ],
-      [
-        this.startNameTag
-          ? findAnchoredMatch(this.startNameTag, this.buffer, this.precedingChar)
-          : null,
-        "nameTag",
-      ],
+      [this.startNameTag ? this.findNameTag() : null, "nameTag"],
       // Not line-anchored on purpose: Devstral glues the call straight onto its prose.
       [this.startBare ? firstMatch(this.startBare, this.buffer) : null, "bare"],
     ]);
@@ -266,7 +271,16 @@ export class ToolCallStreamParser {
       if (final) {
         return false; // let flush() emit the remaining buffer as plain text
       }
-      const safeLen = Math.max(0, this.buffer.length - this.tailReserve);
+      let safeLen = Math.max(0, this.buffer.length - this.tailReserve);
+      // A tool-name tag can be longer than the tail reserve (a self-closing tag carrying a
+      // whole command as an attribute): never flush past a `<` whose tag hasn't closed yet.
+      if (this.startNameTag) {
+        const open = this.buffer.lastIndexOf("<");
+        const rest = open >= 0 ? this.buffer.slice(open) : "";
+        if (open >= 0 && /^<[\w-]*$|^<[\w-]+[ \t/]/.test(rest) && !/[>\n]/.test(rest)) {
+          safeLen = Math.min(safeLen, open);
+        }
+      }
       if (safeLen > 0) {
         const text = this.consumeFront(safeLen);
         events.push({ type: "text", text });
@@ -280,20 +294,39 @@ export class ToolCallStreamParser {
     if (variant === "bare") {
       if (matchStart > 0) events.push({ type: "text", text: this.consumeFront(matchStart) });
       const marker = this.consumeFront(match[0].length);
-      this.mode = { kind: "bare", declaredName: match[1] as string, startRaw: marker };
+      this.mode = {
+        kind: "bare",
+        declaredName: (match[1] ?? match[2]) as string,
+        startRaw: marker,
+      };
       return true;
     }
 
     if (variant === "nameTag") {
-      const name = match[1] as string;
+      const tagName = match[1] as string;
       if (matchStart > 0) events.push({ type: "text", text: this.consumeFront(matchStart) });
       const openTag = this.consumeFront(match[0].length);
+      const attrName = NAME_ATTR.exec(openTag)?.[1];
+      const declaredName = attrName && this.toolNames.has(attrName) ? attrName : tagName;
+      if (openTag.endsWith("/>")) {
+        // Self-closing, arguments as attributes: the whole call is the tag.
+        const args = tagAttributes(openTag);
+        events.push({
+          type: "envelope",
+          envelope: { variant: "xml", declaredName, body: JSON.stringify(args), raw: openTag },
+        });
+        return true;
+      }
       this.mode = {
         kind: "envelope",
         variant: "xml",
-        declaredName: name,
+        declaredName,
         startRaw: openTag,
-        end: new RegExp(`<\\/[ \\t]*${escapeRegExp(name)}[ \\t]*>|${END_XML.source}`, "i"),
+        attrArgs: tagAttributes(openTag),
+        end: new RegExp(
+          `<\\/[ \\t]*${escapeRegExp(tagName)}(?:[_-][a-z]+)?[ \\t]*>|${END_XML.source}`,
+          "i",
+        ),
       };
       return true;
     }
@@ -344,6 +377,29 @@ export class ToolCallStreamParser {
     const fenceOpen = this.consumeFront(fenceOpenLength);
     this.mode = { kind: "envelope", variant: "fenced", declaredName: null, startRaw: fenceOpen };
     return true;
+  }
+
+  /** A tool-name tag counts when it opens a line, when it is self-closing with attributes, or
+   * when a JSON object follows it - the last two may sit mid-sentence (Devstral writes
+   * `...to "sum"<edit_file name="edit_file">{...}`). A tag at the very end of the buffer that
+   * needs the following text to decide is skipped until more arrives. */
+  private findNameTag(): RegExpExecArray | null {
+    const regex = this.startNameTag as RegExp;
+    regex.lastIndex = 0;
+    for (let m = regex.exec(this.buffer); m !== null; m = regex.exec(this.buffer)) {
+      const after = this.buffer.slice(m.index + m[0].length).trimStart();
+      const jsonFollows = after.startsWith("{");
+      // An invented suffix (`<glob_pattern>`) is only a call when its JSON arguments follow.
+      if (m[2] && m[2].toLowerCase() !== "call") {
+        if (jsonFollows) return m;
+      } else {
+        if (isAtLineStart(this.buffer, m.index, this.precedingChar)) return m;
+        if (m[0].endsWith("/>") && m[0].includes("=")) return m;
+        if (jsonFollows) return m;
+      }
+      if (regex.lastIndex === m.index) regex.lastIndex++;
+    }
+    return null;
   }
 
   private drainBare(events: ParserEvent[]): boolean {
@@ -438,10 +494,12 @@ export class ToolCallStreamParser {
     const closeRaw = match[0];
     const body = this.consumeFront(match.index);
     this.consumeFront(closeRaw.length);
+    const attrArgs = this.mode.attrArgs;
+    const useAttrs = body.trim() === "" && attrArgs && Object.keys(attrArgs).length > 0;
     const envelope: RawToolCallEnvelope = {
       variant: this.mode.variant,
       declaredName: this.mode.declaredName,
-      body,
+      body: useAttrs ? JSON.stringify(attrArgs) : body,
       raw: this.mode.startRaw + body + closeRaw,
     };
     events.push({ type: "envelope", envelope });
@@ -463,6 +521,21 @@ function pickEarliest(
     if (match && (!best || match.index < best[0].index)) best = [match, variant];
   }
   return best;
+}
+
+const TAG_ATTRIBUTE = /([A-Za-z_][\w-]*)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)')/g;
+
+/** The attributes of a self-closing call tag as arguments, minus `name` (the tool itself):
+ * `<bash command="find . -name \"*.json\""/>` → `{"command": "find . -name \"*.json\""}`. */
+function tagAttributes(tag: string): Record<string, string> {
+  const args: Record<string, string> = {};
+  TAG_ATTRIBUTE.lastIndex = 0;
+  for (let m = TAG_ATTRIBUTE.exec(tag); m !== null; m = TAG_ATTRIBUTE.exec(tag)) {
+    const key = m[1] as string;
+    if (key === "name") continue;
+    args[key] = m[2] !== undefined ? m[2].replace(/\\(["\\])/g, "$1") : (m[3] ?? "");
+  }
+  return args;
 }
 
 function firstMatch(regex: RegExp, buffer: string): RegExpExecArray | null {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ToolRegistry, textResult } from "../tools/types.js";
-import { resolveEnvelope } from "./resolve.js";
+import { resolveEnvelope, resolveTrailingArguments } from "./resolve.js";
 import type { RawToolCallEnvelope } from "./types.js";
 
 function xmlEnvelope(declaredName: string | null, body: string): RawToolCallEnvelope {
@@ -329,5 +329,132 @@ describe("resolveEnvelope - schema extraction never keeps a closing tag in a val
     );
     expect("message" in result).toBe(false);
     if (!("message" in result)) expect(result.input).toEqual({ path: "sum.mjs" });
+  });
+});
+
+describe("resolveEnvelope - calls named after the wrapper or a foreign tool (captured live on gpt-oss)", () => {
+  function registryWithBash(): ToolRegistry {
+    const registry = buildRegistry();
+    registry.register({
+      name: "bash",
+      description: "Run a command.",
+      permission: "execute",
+      inputSchema: {
+        type: "object",
+        properties: { command: { type: "string" } },
+        required: ["command"],
+        additionalProperties: false,
+      },
+      async execute() {
+        return textResult("ran");
+      },
+    });
+    return registry;
+  }
+  const env = (declaredName: string | null, body: string): RawToolCallEnvelope => ({
+    variant: "xml",
+    declaredName,
+    body,
+    raw: body,
+  });
+  const ok = (r: ReturnType<typeof resolveEnvelope>) => {
+    if ("message" in r) throw new Error(r.message);
+    return r;
+  };
+
+  it('unwraps name="tool_call" with the real name and args inside', () => {
+    const r = ok(
+      resolveEnvelope(
+        env("tool_call", '{"name":"bash","args":{"command":"ls -R"}}'),
+        registryWithBash(),
+      ),
+    );
+    expect([r.name, r.input, r.repaired]).toEqual(["bash", { command: "ls -R" }, true]);
+  });
+
+  it('infers the tool for name="tool_call" when exactly one tool fits the arguments', () => {
+    const r = ok(resolveEnvelope(env("tool_call", '{"command":"ls -R ."}'), registryWithBash()));
+    expect([r.name, r.input]).toEqual(["bash", { command: "ls -R ." }]);
+  });
+
+  it("maps gpt-oss's built-in container.exec onto bash", () => {
+    const r = ok(
+      resolveEnvelope(env("container.exec", '{"cmd":["bash","-lc","ls -R"]}'), registryWithBash()),
+    );
+    expect([r.name, r.input]).toEqual(["bash", { command: "ls -R" }]);
+  });
+
+  it("quotes a plain argv from container.exec", () => {
+    const r = ok(
+      resolveEnvelope(
+        env("container.exec", '{"cmd":["node","-e","console.log(1)"]}'),
+        registryWithBash(),
+      ),
+    );
+    expect(r.input).toEqual({ command: "node -e 'console.log(1)'" });
+  });
+
+  it("strips a trained namespace prefix (browser.glob, captured live)", () => {
+    const r = ok(resolveEnvelope(env("browser.read_file", '{"path":"a.ts"}'), registryWithBash()));
+    expect([r.name, r.input]).toEqual(["read_file", { path: "a.ts" }]);
+  });
+
+  it("strips a functions. namespace prefix", () => {
+    const r = ok(
+      resolveEnvelope(env("functions.read_file", '{"path":"a.ts"}'), registryWithBash()),
+    );
+    expect([r.name, r.input]).toEqual(["read_file", { path: "a.ts" }]);
+  });
+
+  it("still errors when the arguments fit no tool", () => {
+    const r = resolveEnvelope(env("tool_call", '{"url":"http://x"}'), registryWithBash());
+    expect("message" in r).toBe(true);
+  });
+
+  it("does not infer when the arguments fit several tools", () => {
+    const registry = registryWithBash();
+    registry.register({
+      name: "cat_file",
+      description: "Print a file.",
+      permission: "read",
+      inputSchema: {
+        type: "object",
+        properties: { path: { type: "string" } },
+        required: ["path"],
+        additionalProperties: false,
+      },
+      async execute() {
+        return textResult("x");
+      },
+    });
+    const r = resolveEnvelope(env("tool_call", '{"path":"a.ts"}'), registry);
+    expect("message" in r).toBe(true);
+  });
+});
+
+describe("resolveTrailingArguments (captured live on gpt-oss)", () => {
+  it("treats a reply ending in edit_file's exact arguments as that call", () => {
+    const text =
+      '{"path":"main.mjs","old_string":"import { add } from \\"./math.mjs\\";","new_string":"import { sum } from \\"./math.mjs\\";"}\n';
+    const r = resolveTrailingArguments(text, buildRegistry());
+    expect(r?.name).toBe("edit_file");
+    expect(r?.input).toEqual({
+      path: "main.mjs",
+      old_string: 'import { add } from "./math.mjs";',
+      new_string: 'import { sum } from "./math.mjs";',
+    });
+  });
+
+  it("finds the object after prose", () => {
+    const r = resolveTrailingArguments('Reading it now.\n{"path": "a.ts"}', buildRegistry());
+    expect(r?.name).toBe("read_file");
+  });
+
+  it("leaves JSON that fits no tool as an answer", () => {
+    expect(resolveTrailingArguments('{"port": 8443}', buildRegistry())).toBeNull();
+  });
+
+  it("leaves a reply that doesn't end in an object alone", () => {
+    expect(resolveTrailingArguments('{"path": "a.ts"} is the file', buildRegistry())).toBeNull();
   });
 });
