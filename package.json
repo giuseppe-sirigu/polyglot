@@ -35,7 +35,9 @@
   "pnpm": {
     "onlyBuiltDependencies": ["@biomejs/biome", "esbuild"],
     "overrides": {
-      "qs@<6.16.0": ">=6.16.0"
+      "qs@<6.16.0": ">=6.16.0",
+      "fast-uri@<3.1.7": "^3.1.7",
+      "ip-address@<10.5.1": "^10.5.1"
     }
   }
 }
