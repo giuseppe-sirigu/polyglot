@@ -314,3 +314,20 @@ describe("resolveEnvelope", () => {
     });
   });
 });
+
+describe("resolveEnvelope - schema extraction never keeps a closing tag in a value", () => {
+  it("drops an unrecognised trailing closing tag", () => {
+    const registry = buildRegistry();
+    const result = resolveEnvelope(
+      {
+        variant: "xml",
+        declaredName: "read_file",
+        body: '\n"path": "sum.mjs"\n</read_file>',
+        raw: "",
+      },
+      registry,
+    );
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) expect(result.input).toEqual({ path: "sum.mjs" });
+  });
+});

@@ -65,7 +65,7 @@ function parseStructuredMessage(
 // need concatenating into one assistant item rather than one item per event, or a single
 // paragraph fragments into several oddly-broken boxes in the transcript.
 function parseTaggedMessage(content: string, tools: ToolRegistry): NewDisplayItem[] {
-  const parser = new ToolCallStreamParser();
+  const parser = new ToolCallStreamParser({ toolNames: tools.names() });
   const events = [...parser.push(content), ...parser.flush()];
   const items: NewDisplayItem[] = [];
   let textBuffer = "";

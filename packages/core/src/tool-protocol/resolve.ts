@@ -73,7 +73,9 @@ function extractBySchema(body: string, schema: JsonSchema): Record<string, unkno
     const cur = markers[i] as (typeof markers)[number];
     const end =
       i + 1 < markers.length ? (markers[i + 1] as (typeof markers)[number]).start : body.length;
-    let value = body.slice(cur.valueAt, end);
+    // A closing tag the stream parser didn't recognise as one can trail the last value; it is
+    // never part of an argument.
+    let value = body.slice(cur.valueAt, end).replace(/\s*<\/[\w-]+[^>\n]*>\s*$/, "");
 
     const quoted = /^\s*(["'`])/.exec(value);
     if (quoted) {

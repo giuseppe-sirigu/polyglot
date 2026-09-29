@@ -194,3 +194,117 @@ describe("ToolCallStreamParser", () => {
     }
   });
 });
+
+describe("ToolCallStreamParser - natively-trained call formats (toolNames given)", () => {
+  const toolNames = ["read_file", "edit_file", "bash"];
+
+  function parseWith(text: string): ParserEvent[] {
+    const parser = new ToolCallStreamParser({ toolNames });
+    return mergeAdjacentText([...parser.push(text), ...parser.flush()]);
+  }
+
+  /** Same chunk-boundary invariance as runChunkedEveryWay, with tool names configured. */
+  function parseChunkedEveryWay(text: string): ParserEvent[] {
+    const first = parseWith(text);
+    for (let splitAt = 1; splitAt < text.length; splitAt++) {
+      const parser = new ToolCallStreamParser({ toolNames });
+      const events = mergeAdjacentText([
+        ...parser.push(text.slice(0, splitAt)),
+        ...parser.push(text.slice(splitAt)),
+        ...parser.flush(),
+      ]);
+      expect(events, `mismatch when split at index ${splitAt}`).toEqual(first);
+    }
+    return first;
+  }
+
+  function envelopes(events: ParserEvent[]) {
+    return events.flatMap((e) => (e.type === "envelope" ? [e.envelope] : []));
+  }
+
+  it("recognises Devstral's name{json} glued onto its prose (captured live via Ollama)", () => {
+    const text =
+      'I\'ll first examine the `util.mjs` file to find the `unused()` function, then remove it.read_file{"path": "util.mjs"}';
+    const events = parseChunkedEveryWay(text);
+    expect(envelopes(events)).toEqual([
+      {
+        variant: "xml",
+        declaredName: "read_file",
+        body: '{"path": "util.mjs"}',
+        raw: 'read_file{"path": "util.mjs"}',
+      },
+    ]);
+    expect(events[0]).toEqual({
+      type: "text",
+      text: "I'll first examine the `util.mjs` file to find the `unused()` function, then remove it.",
+    });
+  });
+
+  it("recognises Mistral's [TOOL_CALLS]name[ARGS]{json} markers", () => {
+    const events = parseChunkedEveryWay('[TOOL_CALLS]read_file[ARGS]{"path": "a.mjs"}');
+    expect(envelopes(events)).toHaveLength(1);
+    expect(envelopes(events)[0]?.declaredName).toBe("read_file");
+    expect(envelopes(events)[0]?.body).toBe('{"path": "a.mjs"}');
+  });
+
+  it("keeps braces inside string values inside the bare object", () => {
+    const body = '{"command": "node -e \\"console.log({a: 1})\\""}';
+    const events = parseChunkedEveryWay(`bash${body} done`);
+    expect(envelopes(events)[0]?.body).toBe(body);
+    expect(events.at(-1)).toEqual({ type: "text", text: " done" });
+  });
+
+  it("recognises the tool name used as the tag (captured live on qwen2.5-coder:7b)", () => {
+    const text =
+      '<edit_file>\n{"path": "math.mjs", "old_string": "add", "new_string": "sum"}\n</edit_file>\nDone.';
+    const events = parseChunkedEveryWay(text);
+    expect(envelopes(events)).toEqual([
+      {
+        variant: "xml",
+        declaredName: "edit_file",
+        body: '\n{"path": "math.mjs", "old_string": "add", "new_string": "sum"}\n',
+        raw: '<edit_file>\n{"path": "math.mjs", "old_string": "add", "new_string": "sum"}\n</edit_file>',
+      },
+    ]);
+  });
+
+  it("treats a ```json fence naming a known tool as a call", () => {
+    const text = 'Running it:\n```json\n{"name": "bash", "arguments": {"command": "ls"}}\n```\n';
+    expect(envelopes(parseChunkedEveryWay(text))).toEqual([
+      {
+        variant: "fenced",
+        declaredName: null,
+        body: '{"name": "bash", "arguments": {"command": "ls"}}',
+        raw: '```json\n{"name": "bash", "arguments": {"command": "ls"}}\n```\n',
+      },
+    ]);
+  });
+
+  it("leaves a ```json fence that doesn't name a known tool as text", () => {
+    const text = 'Here is the config:\n```json\n{"name": "api", "port": 8443}\n```\n';
+    const events = parseChunkedEveryWay(text);
+    expect(envelopes(events)).toHaveLength(0);
+    expect(events).toEqual([{ type: "text", text }]);
+  });
+
+  it("does not treat a mention of a tool name in prose as a call", () => {
+    const text = "I used read_file to look at it and bash to run it.";
+    expect(parseChunkedEveryWay(text)).toEqual([{ type: "text", text }]);
+  });
+
+  it("changes nothing when no tool names are given", () => {
+    const text = 'read_file{"path": "a"}\n<edit_file>\n{}\n</edit_file>';
+    expect(runChunkedEveryWay(text)).toEqual([{ type: "text", text }]);
+  });
+});
+
+describe("ToolCallStreamParser - closing tag with attributes", () => {
+  it('closes on </tool_call name="..."> (captured live on qwen2.5-coder)', () => {
+    const text =
+      '<tool_call name="read_file">\n{"path": "sum.mjs"}\n</tool_call name="read_file">\nok';
+    const events = runChunkedEveryWay(text);
+    const env = events.find((e) => e.type === "envelope");
+    expect(env?.type === "envelope" && env.envelope.body).toBe('\n{"path": "sum.mjs"}\n');
+    expect(events.at(-1)).toEqual({ type: "text", text: "\nok" });
+  });
+});

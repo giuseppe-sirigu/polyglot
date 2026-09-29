@@ -64,6 +64,14 @@ export interface RunAgentTurnOptions {
 const DEFAULT_MAX_STEPS = 25;
 const DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES = 2;
 const DEFAULT_MAX_SUBAGENT_SPAWNS = 3;
+/** How many empty replies (no text, no tool call) one user turn may be nudged past. */
+const MAX_EMPTY_REPLY_NUDGES = 2;
+/** Sent after an empty reply. Seen live on gpt-oss via Ollama: after a tool result it sometimes
+ * returns a turn whose whole output went to its reasoning channel - nothing visible, no call -
+ * which used to read as "done" and left the task half-finished. */
+const EMPTY_REPLY_NUDGE =
+  "Your last reply was empty. Continue the task: call the next tool you need, or, if the task " +
+  "is complete, reply with a short summary of what you did.";
 
 async function pushMessage(
   session: Session,
@@ -76,8 +84,8 @@ async function pushMessage(
   await onMessage?.(message);
 }
 
-function extractEnvelopes(text: string): RawToolCallEnvelope[] {
-  const parser = new ToolCallStreamParser();
+function extractEnvelopes(text: string, toolNames: string[]): RawToolCallEnvelope[] {
+  const parser = new ToolCallStreamParser({ toolNames });
   const events = [...parser.push(text), ...parser.flush()];
   return events
     .filter((e) => e.type === "envelope")
@@ -116,6 +124,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
 
   let consecutiveParseFailures = 0;
   let subAgentSpawns = 0;
+  let emptyReplyNudges = 0;
 
   // Which model is actually running this turn. Starts as the caller's; a failover swaps the
   // adapter + system prompt here and rewrites `session.model` / `session.provider` (sticky) so
@@ -169,7 +178,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
 
     let fullText = "";
     let stopReason: "end_turn" | "max_tokens" | "error" = "end_turn";
-    const liveParser = new ToolCallStreamParser();
+    const liveParser = new ToolCallStreamParser({ toolNames: tools.names() });
 
     try {
       for await (const event of activeAdapter.chat(
@@ -261,7 +270,7 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
       );
       if (parsed.value.message) onEvent({ type: "text_delta", delta: parsed.value.message });
     } else {
-      const envelopes = extractEnvelopes(fullText);
+      const envelopes = extractEnvelopes(fullText, tools.names());
       resolutions = envelopes.map((envelope) => resolveEnvelope(envelope, tools));
     }
 
@@ -272,6 +281,21 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     // bug: on a later turn the model had no memory of e.g. its own already-approved plan call,
     // and (correctly, given what it could see) concluded nothing had been approved yet.
     await pushMessage(session, "assistant", fullText, onMessage);
+
+    if (
+      resolutions.length === 0 &&
+      fullText.trim() === "" &&
+      stopReason !== "error" &&
+      emptyReplyNudges < MAX_EMPTY_REPLY_NUDGES
+    ) {
+      // An empty reply isn't a finished answer. Drop it from history (so the model isn't primed
+      // to repeat it) and ask it to continue; this costs a step, so max_steps still bounds it.
+      emptyReplyNudges += 1;
+      session.messages.pop();
+      onEvent({ type: "empty_reply_nudged", attempt: emptyReplyNudges });
+      await pushMessage(session, "user", EMPTY_REPLY_NUDGE, onMessage);
+      continue;
+    }
 
     if (resolutions.length === 0) {
       // No tool call this step. Normally that means the model is finished - but if it was

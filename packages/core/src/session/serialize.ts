@@ -84,7 +84,7 @@ function decodeAssistant(content: string, tools: ToolRegistry): TurnItem[] {
     return items;
   }
 
-  const parser = new ToolCallStreamParser();
+  const parser = new ToolCallStreamParser({ toolNames: tools.names() });
   const events = [...parser.push(content), ...parser.flush()];
   let buf = "";
   const flush = () => {

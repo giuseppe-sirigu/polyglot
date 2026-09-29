@@ -360,3 +360,43 @@ describe("runAgentTurn give-up detection (free-text mode)", () => {
     expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "unreliable_model" });
   });
 });
+
+describe("runAgentTurn empty-reply recovery (free-text mode)", () => {
+  const READ_CALL = '<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_call>';
+
+  it("nudges past an empty reply mid-task instead of ending the turn (seen live on gpt-oss)", async () => {
+    const adapter = fakeFreeTextAdapter([READ_CALL, "\n\n", READ_CALL, "Done: read a.ts twice."]);
+
+    const { events, session } = await run(adapter, buildRegistry());
+
+    expect(events.filter((e) => e.type === "empty_reply_nudged")).toEqual([
+      { type: "empty_reply_nudged", attempt: 1 },
+    ]);
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
+    // The empty reply is not kept in history; the nudge is.
+    expect(session.messages.some((m) => m.role === "assistant" && m.content.trim() === "")).toBe(
+      false,
+    );
+    expect(session.messages.some((m) => m.content.startsWith("Your last reply was empty."))).toBe(
+      true,
+    );
+  });
+
+  it("stops as done after the nudge budget is spent", async () => {
+    const adapter = fakeFreeTextAdapter(["", "", ""]);
+
+    const { events } = await run(adapter, buildRegistry());
+
+    expect(events.filter((e) => e.type === "empty_reply_nudged")).toHaveLength(2);
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
+  });
+
+  it("does not nudge a reply that has text", async () => {
+    const adapter = fakeFreeTextAdapter(["All good."]);
+
+    const { events } = await run(adapter, buildRegistry());
+
+    expect(events.some((e) => e.type === "empty_reply_nudged")).toBe(false);
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
+  });
+});

@@ -42,6 +42,19 @@ export function buildOpenAIRequestBody(
   };
 }
 
+/**
+ * Renders natively-emitted tool calls as the `<tool_call>` envelopes the agent loop parses, so a
+ * model that answers through the native `tool_calls` channel (gpt-oss via Ollama does, even when
+ * no `tools` are declared) is handled exactly like one that follows the text grammar. Arguments
+ * are passed through as-is; the resolver repairs and validates them like any other body.
+ */
+export function renderNativeToolCalls(calls: { name: string; arguments: string }[]): string {
+  return calls
+    .filter((c) => c.name.length > 0)
+    .map((c) => `\n<tool_call name="${c.name}">\n${c.arguments.trim() || "{}"}\n</tool_call>\n`)
+    .join("");
+}
+
 export class OpenAICompatibleAdapter implements ProviderAdapter {
   readonly id: string;
   readonly capabilities: ProviderCapabilities;
@@ -65,11 +78,20 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     });
 
     let stopReason: "end_turn" | "max_tokens" | "error" = "end_turn";
+    // Native tool calls stream as fragments keyed by index: the name arrives once, the
+    // arguments in pieces. Accumulated here and emitted as text once the stream ends.
+    const nativeCalls: { name: string; arguments: string }[] = [];
     for await (const chunk of stream) {
       const choice = chunk.choices[0];
       const delta = choice?.delta?.content;
       if (delta) {
         yield { type: "text_delta", delta };
+      }
+      for (const call of choice?.delta?.tool_calls ?? []) {
+        const slot = nativeCalls[call.index] ?? { name: "", arguments: "" };
+        nativeCalls[call.index] = slot;
+        if (call.function?.name) slot.name += call.function.name;
+        if (call.function?.arguments) slot.arguments += call.function.arguments;
       }
       if (choice?.finish_reason === "length") {
         stopReason = "max_tokens";
@@ -83,6 +105,8 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         };
       }
     }
+    const rendered = renderNativeToolCalls(nativeCalls.filter(Boolean));
+    if (rendered) yield { type: "text_delta", delta: rendered };
     yield { type: "message_stop", stopReason };
   }
 }
