@@ -61,7 +61,8 @@ export function unwrapDuckDuckGoRedirect(href: string): string {
   if (normalized.startsWith("//")) normalized = `https:${normalized}`;
   try {
     const u = new URL(normalized);
-    if (u.hostname.endsWith("duckduckgo.com") && u.pathname === "/l/") {
+    const ddg = u.hostname === "duckduckgo.com" || u.hostname.endsWith(".duckduckgo.com");
+    if (ddg && u.pathname === "/l/") {
       const target = u.searchParams.get("uddg");
       if (target) return target;
     }
@@ -148,7 +149,8 @@ async function searchSearxng(
       "The 'searxng' backend needs webSearch.baseURL (or POLYGLOT_WEBSEARCH_BASE_URL) set to your SearXNG instance.",
     );
   }
-  const base = cfg.baseURL.replace(/\/+$/, "");
+  let base = cfg.baseURL;
+  while (base.endsWith("/")) base = base.slice(0, -1);
   const res = await fetchText(
     `${base}/search?q=${encodeURIComponent(query)}&format=json`,
     { headers: { Accept: "application/json" } },

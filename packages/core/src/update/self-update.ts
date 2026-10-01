@@ -1,8 +1,8 @@
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { promisify } from "node:util";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 
@@ -24,18 +24,21 @@ export function detectPackageManager(scriptPath: string = process.argv[1] ?? "")
   return "npm";
 }
 
-function updateCommand(pm: PackageManager, packageName: string): string {
+function updateArgs(pm: PackageManager, packageName: string): string[] {
   switch (pm) {
     case "pnpm":
-      return `pnpm add -g ${packageName}@latest`;
+      return ["add", "-g", `${packageName}@latest`];
     case "yarn":
-      return `yarn global add ${packageName}@latest`;
+      return ["global", "add", `${packageName}@latest`];
     case "bun":
-      return `bun add -g ${packageName}@latest`;
+      return ["add", "-g", `${packageName}@latest`];
     default:
-      return `npm install -g ${packageName}@latest`;
+      return ["install", "-g", `${packageName}@latest`];
   }
 }
+
+/** An npm package name, optionally scoped - nothing a shell could read as more than a word. */
+const PACKAGE_NAME = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
 
 export interface SelfUpdateResult {
   ok: boolean;
@@ -65,10 +68,16 @@ export function classifyUpdateFailure(raw: string): "registry-lag" | "offline" |
  * should never crash or block the app. The message is a single clean line; the
  * package manager's raw stderr is never surfaced. */
 export async function runSelfUpdate(packageName: string): Promise<SelfUpdateResult> {
+  if (!PACKAGE_NAME.test(packageName)) {
+    return { ok: false, message: `Not a valid package name: ${packageName}` };
+  }
   const pm = detectPackageManager();
-  const command = updateCommand(pm, packageName);
+  const args = updateArgs(pm, packageName);
+  const command = [pm, ...args].join(" ");
   try {
-    await execAsync(command, { timeout: 120_000 });
+    // Windows global installs are .cmd shims, which only run through a shell; the name is
+    // validated above, so the joined command line is plain words either way.
+    await execFileAsync(pm, args, { timeout: 120_000, shell: process.platform === "win32" });
     return { ok: true, message: `Updated via ${pm}. Restart polyglot to use the new version.` };
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);

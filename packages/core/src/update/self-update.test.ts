@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyUpdateFailure, detectPackageManager } from "./self-update.js";
+import { classifyUpdateFailure, detectPackageManager, runSelfUpdate } from "./self-update.js";
 
 describe("classifyUpdateFailure", () => {
   it("flags registry propagation lag as retriable", () => {
@@ -35,5 +35,13 @@ describe("detectPackageManager", () => {
     expect(detectPackageManager("/usr/local/lib/node_modules/@usepolyglot/cli/dist/main.js")).toBe(
       "npm",
     );
+  });
+});
+
+describe("runSelfUpdate", () => {
+  it("refuses a package name that isn't one word", async () => {
+    const r = await runSelfUpdate("@usepolyglot/cli; rm -rf ~");
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain("Not a valid package name");
   });
 });
