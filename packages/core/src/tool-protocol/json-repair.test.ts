@@ -160,6 +160,22 @@ describe("repairJson - stray punctuation after a complete object (captured live 
     expect(r.ok && (r.value as Record<string, unknown>).path).not.toBe('a"}');
   });
 
+  // Captured on qwen2.5-coder 32B: no close tag, then an invented next turn. Before the fix
+  // the path came back as `greet.mjs"}\n选出` and the edit wrote `"}\noutput>` into the file.
+  it.each([
+    ['{"path": "greet.mjs"}\n选出', { path: "greet.mjs" }],
+    [
+      '{"path":"utils.mjs", "old_string":"a", "new_string":"b"}\noutput>\n<tool_result name="edit_file">\nEdited utils.mjs\n</tool_result>',
+      { path: "utils.mjs", old_string: "a", new_string: "b" },
+    ],
+  ])("drops an invented turn after the object: %s", (body, expected) => {
+    expect(ok(repairJson(body))).toEqual(expected);
+  });
+
+  it("still merges objects split across lines", () => {
+    expect(ok(repairJson('{"path": "a"}\n{"content": "b"}'))).toEqual({ path: "a", content: "b" });
+  });
+
   it("strips a stray closing brace after a quoted loose value", () => {
     expect(ok(repairJson('"path": "sum.mjs"}')).path).toBe("sum.mjs");
     expect(ok(repairJson('path: "sum.mjs"}')).path).toBe("sum.mjs");

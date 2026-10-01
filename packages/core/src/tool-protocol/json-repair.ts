@@ -163,6 +163,14 @@ export function repairJson(text: string): RepairResult {
 /** Only closing punctuation, quotes and whitespace - what models leave after a finished object. */
 const STRAY_TRAILING_PUNCTUATION = /^[\s"'`}\],;]*$/;
 
+/** A finished object, then a new line of something that is not more JSON: a botched close
+ * tag and an invented next turn (`\noutput>\n<tool_result ...`, `\n选出`). The line break
+ * ends the call; keep a following `{` out so split objects still merge below. */
+function isRunawayLine(rest: string): boolean {
+  const m = /^[ \t"'`}\],;]*\n/.exec(rest);
+  return m !== null && !rest.slice(m[0].length).trimStart().startsWith("{");
+}
+
 function extractLeadingObject(text: string): Record<string, unknown> | null {
   if (!text.startsWith("{")) return null;
   let depth = 0;
@@ -181,7 +189,8 @@ function extractLeadingObject(text: string): Record<string, unknown> | null {
     else if (c === "}") {
       depth--;
       if (depth === 0) {
-        if (!STRAY_TRAILING_PUNCTUATION.test(text.slice(i + 1))) return null;
+        const rest = text.slice(i + 1);
+        if (!STRAY_TRAILING_PUNCTUATION.test(rest) && !isRunawayLine(rest)) return null;
         return strictObject(text.slice(0, i + 1));
       }
     }

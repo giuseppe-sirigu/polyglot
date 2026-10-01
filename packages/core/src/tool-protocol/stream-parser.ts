@@ -1,6 +1,8 @@
 import type { ParserEvent, RawToolCallEnvelope } from "./types.js";
 
 const START_XML = /<tool[_-]?call\b/gi;
+/** A `<tool_call` at the end of the buffer whose tag, or the JSON after it, hasn't arrived yet. */
+const PENDING_GLUED_XML = /<tool[_-]?call\b(?:[^>\n]*|[^>\n]*>\s*)$/i;
 const START_FENCE = /```[ \t]*(tool_call|toolcall)\b[ \t]*\n/gi;
 // Accepts "</tool_call>" as documented, but also the shorter "</tool>" some models default to
 // when abbreviating a closing tag, and "</tool_result>" (seen live on qwen3.8-27b: a model
@@ -14,6 +16,12 @@ const START_FENCE = /```[ \t]*(tool_call|toolcall)\b[ \t]*\n/gi;
 const END_XML = /<\/[ \t]*tool(?:[_-]?(?:call|result))?\b[^>\n]*>/i;
 const END_FENCE = /\n?```[ \t]*(\n|$)/;
 const NAME_ATTR = /name\s*=\s*["']([^"']*)["']/i;
+/** Inside a call, the model has started writing the next turn itself - a bare `</` line, a
+ * `user>` line, or an opening `<tool_result` (seen live on qwen2.5-coder:32b, where the
+ * envelope ran on through an invented tool result and all of it was written into a file).
+ * None of these is ever part of a call's arguments, so the call ends there. */
+const RUNAWAY_TURN =
+  /\n[ \t]*<\/[ \t]*\n|\n[ \t]*(?:user|assistant|system)>?[ \t]*\n|\n[ \t]*<tool_result\b/;
 /** A ```json fence - only treated as a tool call when its body names a known tool (checked
  * once the fence closes), so ordinary JSON shown to the user stays text. */
 const START_JSON_FENCE = /```[ \t]*json[ \t]*\n/gi;
@@ -150,11 +158,13 @@ export class ToolCallStreamParser {
       // `<glob>`, `<glob_call name="glob">`, self-closing `<glob pattern="*"/>` (Devstral).
       // Also an invented suffix (`<glob_pattern>`, Devstral) - accepted only with JSON after it.
       this.startNameTag = new RegExp(`<(${alt})(?:[_-]([a-z]+))?(?=[\\s>/])[^>\\n]*>`, "gi");
-      // `glob{"`, `glob {"`, `glob>\n{"` (a dropped `<`), `[TOOL_CALLS]glob[ARGS]{"`.
+      // `glob{"`, `glob {"`, `glob>\n{"` (a dropped `<`), `[TOOL_CALLS]glob[ARGS]{"`, `glob.call({"`,
+      // `glob_call name="glob">\n{"` (a dropped `<` on an attribute tag).
       this.startBare = new RegExp(
         // Second branch: glued onto the previous word (`main.mjsedit_file>{`, Devstral) - only in
         // the explicit `name>` / `name[ARGS]` forms, so a word merely ending in a tool name stays text.
-        `(?:\\[TOOL_CALLS\\][ \\t]*)?(?:\\b(${alt})(?:\\[ARGS\\]|>)?|(${alt})(?:\\[ARGS\\]|>))[ \\t]*\\n?[ \\t]*(?=\\{[ \\t\\n]*")`,
+        // Separators seen live on Devstral: none, `[ARGS]`, `>`, `=`, `:`, and a `(` around the JSON.
+        `(?:\\[TOOL_CALLS\\][ \\t]*)?(?:\\b(${alt})(?:\\[ARGS\\]|\\.call|[>=:])?|(${alt})(?:\\[ARGS\\]|(?:_call\\b[^>\\n]*)?>))[ \\t]*\\n?[ \\t]*(?:\\([ \\t]*\\n?[ \\t]*)?(?=\\{[ \\t\\n]*")`,
         "g",
       );
       const longest = Math.max(...names.map((n) => n.length));
@@ -255,7 +265,7 @@ export class ToolCallStreamParser {
     }
 
     const candidate = pickEarliest([
-      [findAnchoredMatch(START_XML, this.buffer, this.precedingChar), "xml"],
+      [this.findXmlStart(), "xml"],
       [findAnchoredMatch(START_FENCE, this.buffer, this.precedingChar), "fenced"],
       [
         this.toolNames.size > 0
@@ -281,6 +291,9 @@ export class ToolCallStreamParser {
           safeLen = Math.min(safeLen, open);
         }
       }
+      // A `<tool_call` glued onto prose may still turn out to be a call once its JSON arrives.
+      const gluedTag = this.buffer.search(PENDING_GLUED_XML);
+      if (gluedTag >= 0) safeLen = Math.min(safeLen, gluedTag);
       if (safeLen > 0) {
         const text = this.consumeFront(safeLen);
         events.push({ type: "text", text });
@@ -383,6 +396,28 @@ export class ToolCallStreamParser {
    * when a JSON object follows it - the last two may sit mid-sentence (Devstral writes
    * `...to "sum"<edit_file name="edit_file">{...}`). A tag at the very end of the buffer that
    * needs the following text to decide is skipped until more arrives. */
+  /** `<tool_call>` opening a line, or glued onto prose (`util.mjs:<tool_call name="edit_file">`,
+   * seen on Devstral) when JSON arguments follow the tag - a mention mid-sentence has none. */
+  private findXmlStart(): RegExpExecArray | null {
+    START_XML.lastIndex = 0;
+    for (let m = START_XML.exec(this.buffer); m !== null; m = START_XML.exec(this.buffer)) {
+      if (isAtLineStart(this.buffer, m.index, this.precedingChar)) return m;
+      const close = this.buffer.indexOf(">", m.index);
+      const tag = close === -1 ? "" : this.buffer.slice(m.index, close);
+      if (
+        close !== -1 &&
+        !tag.includes("\n") &&
+        this.buffer
+          .slice(close + 1)
+          .trimStart()
+          .startsWith("{")
+      ) {
+        return m;
+      }
+    }
+    return null;
+  }
+
   private findNameTag(): RegExpExecArray | null {
     const regex = this.startNameTag as RegExp;
     regex.lastIndex = 0;
@@ -440,6 +475,26 @@ export class ToolCallStreamParser {
     if (this.mode.kind !== "envelope") return false;
     const endRegex = this.mode.end ?? (this.mode.variant === "xml" ? END_XML : END_FENCE);
     let match = endRegex.exec(this.buffer);
+    if (this.mode.variant === "xml") {
+      const runaway = RUNAWAY_TURN.exec(this.buffer);
+      if (runaway && (!match || runaway.index < match.index)) {
+        const body = this.consumeFront(runaway.index);
+        // A bare `</` line is the call's own broken close; anything else is invented
+        // conversation, left as text so it stays visible.
+        if (/^\n[ \t]*<\/[ \t]*\n$/.test(runaway[0])) this.consumeFront(runaway[0].length);
+        events.push({
+          type: "envelope",
+          envelope: {
+            variant: this.mode.variant,
+            declaredName: this.mode.declaredName,
+            body,
+            raw: this.mode.startRaw + body,
+          },
+        });
+        this.mode = { kind: "text" };
+        return true;
+      }
+    }
     // A closing fence matched against the end of the buffer (`$`, not a newline) may just be a
     // chunk boundary - the newline that belongs to it can still arrive. Wait unless the stream
     // has ended, so the result doesn't depend on where the network split the text.

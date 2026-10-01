@@ -458,3 +458,60 @@ describe("resolveTrailingArguments (captured live on gpt-oss)", () => {
     expect(resolveTrailingArguments('{"path": "a.ts"} is the file', buildRegistry())).toBeNull();
   });
 });
+
+describe("resolveEnvelope - a nameless tag stuttered before the named one (captured live on Qwen3.8-27B)", () => {
+  it("uses the inner named tag", () => {
+    const r = resolveEnvelope(
+      {
+        variant: "xml",
+        declaredName: null,
+        body: '\n<tool_call name="read_file">\n{"path": "todo.mjs"}\n',
+        raw: "",
+      },
+      buildRegistry(),
+    );
+    if ("message" in r) throw new Error(r.message);
+    expect([r.name, r.input]).toEqual(["read_file", { path: "todo.mjs" }]);
+  });
+});
+
+describe("resolveEnvelope - Qwen's native <function=...> body (captured live on Qwen3.8-27B)", () => {
+  it.each([
+    ['\n<function=read_file</function>\n<parameter name="path">"util.mjs"</parameter>\n'],
+    ["\n<function=read_file>\n<parameter=path>\nutil.mjs\n</parameter>\n</function>\n"],
+  ])("reads the name and parameters: %s", (body) => {
+    const r = resolveEnvelope(xmlEnvelope(null, body), buildRegistry());
+    if ("message" in r) throw new Error(r.message);
+    expect([r.name, r.input]).toEqual(["read_file", { path: "util.mjs" }]);
+  });
+
+  it("names the tool in the error when the parameters are missing", () => {
+    const r = resolveEnvelope(
+      xmlEnvelope(null, "\n<function=read_file</function>\n"),
+      buildRegistry(),
+    );
+    expect("message" in r && r.attemptedName).toBe("read_file");
+  });
+});
+
+describe("resolveEnvelope - a bare string body (captured live on Devstral)", () => {
+  it.each([["**/service.json</lib>"], ["\nservice.json\n"]])(
+    "is the tool's one required string argument: %s",
+    (body) => {
+      const r = resolveEnvelope(xmlEnvelope("read_file", body), buildRegistry());
+      if ("message" in r) throw new Error(r.message);
+      expect(r.name).toBe("read_file");
+      expect(r.input).toEqual({ path: body.replace("</lib>", "").trim() });
+    },
+  );
+
+  it("does not apply to prose", () => {
+    const r = resolveEnvelope(xmlEnvelope("read_file", "\nnot json at all\n"), buildRegistry());
+    expect("message" in r).toBe(true);
+  });
+
+  it("does not apply to a tool with several required arguments", () => {
+    const r = resolveEnvelope(xmlEnvelope("edit_file", "util.mjs"), buildRegistry());
+    expect("message" in r).toBe(true);
+  });
+});

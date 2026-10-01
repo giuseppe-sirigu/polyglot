@@ -453,3 +453,122 @@ describe("ToolCallStreamParser - invented tag suffixes and glued names (captured
     expect(parse('the config.jsonglob{"x": 1} line')).toEqual([]);
   });
 });
+
+describe("ToolCallStreamParser - more name/JSON separators (captured live on Devstral, 5-trial re-run)", () => {
+  const toolNames = ["read_file", "glob"];
+  const parse = (text: string) => {
+    const once = (chunks: string[]) => {
+      const p = new ToolCallStreamParser({ toolNames });
+      return mergeAdjacentText([...chunks.flatMap((c) => p.push(c)), ...p.flush()]);
+    };
+    const first = once([text]);
+    for (let i = 1; i < text.length; i++) {
+      expect(once([text.slice(0, i), text.slice(i)]), `split at ${i}`).toEqual(first);
+    }
+    return first.flatMap((e) => (e.type === "envelope" ? [e.envelope] : []));
+  };
+
+  it("recognises read_file>( {json} )", () => {
+    const envs = parse('Now let me read the file:read_file>(\n{"path": "sum.mjs"}\n)');
+    expect(envs.map((e) => [e.declaredName, e.body])).toEqual([
+      ["read_file", '{"path": "sum.mjs"}'],
+    ]);
+  });
+
+  it("recognises glob={json}", () => {
+    const envs = parse('Now let me check if greet.mjs exists:glob={"pattern": "**/greet.mjs"}');
+    expect(envs.map((e) => [e.declaredName, e.body])).toEqual([
+      ["glob", '{"pattern": "**/greet.mjs"}'],
+    ]);
+  });
+});
+
+describe("ToolCallStreamParser - a call that runs into an invented next turn (captured live on qwen2.5-coder:32b)", () => {
+  it("ends the call at a bare </ line instead of swallowing the invented tool result", () => {
+    const text =
+      '<tool_call name="write_file">\n{"path":"util.mjs","content":"export function used(x) {\\n  return x * 2;\\n}\\n"}\n</\n\nuser>\n<tool_result name="write_file">\nWrote util.mjs (68 bytes).\n\n</tool_result>';
+    const events = runChunkedEveryWay(text);
+    const envs = events.flatMap((e) => (e.type === "envelope" ? [e.envelope] : []));
+    expect(envs).toHaveLength(1);
+    expect(JSON.parse(envs[0]?.body ?? "")).toEqual({
+      path: "util.mjs",
+      content: "export function used(x) {\n  return x * 2;\n}\n",
+    });
+  });
+
+  it("ends the call where the model starts writing a tool result itself", () => {
+    const text =
+      '<tool_call name="bash">\n{"command": "node main.mjs"}\n<tool_result name="bash">\nok\n</tool_result>';
+    const envs = runChunkedEveryWay(text).flatMap((e) =>
+      e.type === "envelope" ? [e.envelope] : [],
+    );
+    expect(envs.map((e) => e.body.trim())).toEqual(['{"command": "node main.mjs"}']);
+  });
+
+  it("keeps a </tool_result> close that ends a normal call", () => {
+    const text = '<tool_call name="bash">\n{"command": "ls"}\n</tool_result>\nDone.';
+    const envs = runChunkedEveryWay(text).flatMap((e) =>
+      e.type === "envelope" ? [e.envelope] : [],
+    );
+    expect(envs.map((e) => e.body.trim())).toEqual(['{"command": "ls"}']);
+  });
+});
+
+describe("ToolCallStreamParser - calls glued onto prose (captured live on Devstral, fixed-build re-run)", () => {
+  const toolNames = ["read_file", "write_file", "edit_file", "bash", "grep", "glob"];
+
+  function envelopes(text: string, names?: string[]) {
+    const first = mergeAdjacentText(
+      (() => {
+        const p = new ToolCallStreamParser(names ? { toolNames: names } : {});
+        return [...p.push(text), ...p.flush()];
+      })(),
+    );
+    for (let splitAt = 1; splitAt < text.length; splitAt++) {
+      const p = new ToolCallStreamParser(names ? { toolNames: names } : {});
+      const events = mergeAdjacentText([
+        ...p.push(text.slice(0, splitAt)),
+        ...p.push(text.slice(splitAt)),
+        ...p.flush(),
+      ]);
+      expect(events, `mismatch when split at index ${splitAt}`).toEqual(first);
+    }
+    return first.flatMap((e) => (e.type === "envelope" ? [e.envelope] : []));
+  }
+
+  it("runs a <tool_call> glued onto the end of a sentence when JSON follows", () => {
+    const text =
+      'Now I\'ll remove it from util.mjs:<tool_call name="edit_file">\n{"path": "util.mjs", "old_string": "a", "new_string": "b"}\n</tool_call>';
+    for (const names of [undefined, toolNames]) {
+      const envs = envelopes(text, names);
+      expect(envs.map((e) => e.declaredName)).toEqual(["edit_file"]);
+      expect(JSON.parse(envs[0]?.body ?? "")).toEqual({
+        path: "util.mjs",
+        old_string: "a",
+        new_string: "b",
+      });
+    }
+  });
+
+  it("leaves a <tool_call> tag mentioned mid-sentence as text", () => {
+    expect(envelopes("Wrap each call in a <tool_call> tag, then stop.")).toEqual([]);
+  });
+
+  it('reads glob_call name="glob"> with its < dropped as a call', () => {
+    const envs = envelopes(
+      'Let me find the files:glob_call name="glob">\n{"pattern": "**/*.mjs"}\n</tool_call>',
+      toolNames,
+    );
+    expect(envs.map((e) => e.declaredName)).toEqual(["glob"]);
+    expect(JSON.parse(envs[0]?.body ?? "")).toEqual({ pattern: "**/*.mjs" });
+  });
+
+  it("reads name.call({...}) as a call", () => {
+    const envs = envelopes(
+      'I\'ll look at the project first.glob.call({\n  "pattern": "**/*"\n})',
+      toolNames,
+    );
+    expect(envs.map((e) => e.declaredName)).toEqual(["glob"]);
+    expect(JSON.parse(envs[0]?.body ?? "")).toEqual({ pattern: "**/*" });
+  });
+});

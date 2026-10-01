@@ -4,6 +4,12 @@ import type { ParsedToolCall, RawToolCallEnvelope, ToolCallParseError } from "./
 import { validateAgainstSchema } from "./validator.js";
 
 const NAME_ALIASES = ["name", "tool", "function", "tool_name"];
+/** Qwen's natively-trained call body: `<function=read_file>` then `<parameter=path>a</parameter>`
+ * (or `<parameter name="path">`), seen live on Qwen3.8-27B - even with the `>` dropped. */
+const QWEN_FUNCTION = /^\s*<function\s*=\s*([\w.-]+)/i;
+const QWEN_PARAMETER =
+  /<parameter\s*(?:=\s*|name\s*=\s*["'])([\w-]+)["']?\s*>\n?([\s\S]*?)\n?<\/parameter>/gi;
+const NESTED_NAMED_OPEN = /^\s*<tool[_-]?call\b[^>\n]*?\bname\s*=\s*["']([^"']+)["'][^>\n]*>/i;
 const ARGS_ALIASES = ["arguments", "input", "parameters", "args"];
 
 /** Names that mean "a tool call" rather than naming a tool - gpt-oss via Ollama emits native
@@ -92,6 +98,31 @@ export function resolveEnvelopeFromRepair(
   repaired: ReturnType<typeof repairJson>,
   registry: ToolRegistry,
 ): ParsedToolCall | ToolCallParseError {
+  // `<tool_call>` then `<tool_call name="read_file">` on the next line (seen live on
+  // Qwen3.8-27B): the outer, nameless tag is a stutter; the named one inside is the call.
+  const nested =
+    envelope.variant === "xml" && !envelope.declaredName
+      ? NESTED_NAMED_OPEN.exec(envelope.body)
+      : null;
+  if (nested) {
+    return resolveEnvelope(
+      {
+        ...envelope,
+        declaredName: nested[1] as string,
+        body: envelope.body.slice(nested[0].length),
+      },
+      registry,
+    );
+  }
+  const qwen =
+    envelope.variant === "xml" && !envelope.declaredName ? QWEN_FUNCTION.exec(envelope.body) : null;
+  if (qwen) {
+    const args: Record<string, unknown> = {};
+    for (const m of envelope.body.matchAll(QWEN_PARAMETER)) {
+      args[m[1] as string] = unquoteParameter(m[2] as string);
+    }
+    return finalize(envelope, qwen[1] as string, args, registry, true);
+  }
   if (envelope.variant === "xml") {
     return resolveXmlEnvelope(envelope, repaired, registry);
   }
@@ -131,6 +162,25 @@ function escapeRegExp(s: string): string {
 
 function requiredKeys(schema: JsonSchema): string[] {
   return Array.isArray(schema.required) ? (schema.required as string[]) : [];
+}
+
+function soleRequiredString(schema: JsonSchema): string | null {
+  const req = requiredKeys(schema);
+  const props = isPlainObject(schema.properties) ? schema.properties : {};
+  const prop = req.length === 1 ? props[req[0] as string] : undefined;
+  return isPlainObject(prop) && prop.type === "string" ? (req[0] as string) : null;
+}
+
+/** `"util.mjs"` → `util.mjs`; anything that isn't a JSON string stays as written. */
+function unquoteParameter(raw: string): string {
+  const t = raw.trim();
+  if (!t.startsWith('"')) return raw;
+  try {
+    const v: unknown = JSON.parse(t);
+    return typeof v === "string" ? v : raw;
+  } catch {
+    return raw;
+  }
 }
 
 function hasAllRequired(schema: JsonSchema, value: unknown): boolean {
@@ -245,6 +295,20 @@ function resolveXmlEnvelope(
     const bySchema = extractBySchema(envelope.body, tool.inputSchema);
     if (bySchema) {
       return finalize(envelope, declaredName, bySchema, registry, true);
+    }
+  }
+
+  // `<glob>**/service.json</glob>` (seen live on Devstral): a bare string body for a tool whose
+  // one required argument is a string is that argument - only a single token (a path or a
+  // pattern), so a prose reply in the body stays an error.
+  if (tool && !hasAllRequired(tool.inputSchema, input)) {
+    const sole = soleRequiredString(tool.inputSchema);
+    const text = envelope.body
+      .trim()
+      .replace(/<\/[\w-]+[^>\n]*>$/, "")
+      .trim();
+    if (sole && text && !/[{}\s]/.test(text) && text.length <= 500) {
+      return finalize(envelope, declaredName, { [sole]: text }, registry, true);
     }
   }
 
