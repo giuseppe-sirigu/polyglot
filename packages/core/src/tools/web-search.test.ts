@@ -48,6 +48,10 @@ describe("unwrapDuckDuckGoRedirect", () => {
       "https://example.com/y",
     );
   });
+  it("does not unwrap a redirect on a look-alike host", () => {
+    const href = "https://evilduckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fy";
+    expect(unwrapDuckDuckGoRedirect(href)).toBe(href);
+  });
 });
 
 describe("JSON parsers", () => {

@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { SECRET_DIR_NAMES, isSecretFilename } from "../permissions/secret-paths.js";
 import { resolveToolPath } from "./resolve-path.js";
@@ -95,9 +95,14 @@ export const grepTool: ToolDefinition<GrepInput> = {
       if (results.length >= MAX_MATCHES) break;
       let content: string;
       try {
-        const { size } = await stat(file);
-        if (size > MAX_FILE_BYTES) continue;
-        content = await readFile(file, { encoding: "utf8", signal: ctx.signal });
+        // Size-check the handle that is read, not the path, so the file can't change in between.
+        const handle = await open(file, "r");
+        try {
+          if ((await handle.stat()).size > MAX_FILE_BYTES) continue;
+          content = await handle.readFile({ encoding: "utf8", signal: ctx.signal });
+        } finally {
+          await handle.close();
+        }
       } catch {
         continue;
       }

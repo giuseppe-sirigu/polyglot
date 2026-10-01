@@ -7,6 +7,9 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: "development"
+        # Majors (TypeScript 7, Biome 2, Vitest 5) need code or config changes; they come
+        # as their own PRs instead of blocking the routine bumps in this group.
+        update-types: ["minor", "patch"]
     open-pull-requests-limit: 10
 
   - package-ecosystem: "github-actions"

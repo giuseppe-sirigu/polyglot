@@ -19,7 +19,7 @@ describe("formatHooksLine", () => {
 
 describe("describeEndpoint", () => {
   it("marks the Anthropic API as data-leaves-machine", () => {
-    expect(describeEndpoint("anthropic", undefined)).toMatch(/api\.anthropic\.com/);
+    expect(describeEndpoint("anthropic", undefined)).toContain("api.anthropic.com");
     expect(describeEndpoint("anthropic", undefined)).toMatch(/leaves this machine/);
   });
 
