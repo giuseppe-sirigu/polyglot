@@ -37,10 +37,10 @@ importers:
     dependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.128.0
-        version: 0.128.0(zod@4.5.4)
+        version: 0.128.0(zod@4.6.5)
       '@modelcontextprotocol/sdk':
         specifier: ^1.11.0
-        version: 1.30.0(zod@4.5.4)
+        version: 1.30.0(zod@4.6.5)
       ajv:
         specifier: ^8.17.1
         version: 8.20.0
@@ -64,13 +64,13 @@ importers:
         version: 10.2.6
       openai:
         specifier: ^7.23.0
-        version: 7.23.0(ws@8.21.3)(zod@4.5.4)
+        version: 7.23.0(ws@8.21.3)(zod@4.6.5)
       react:
         specifier: ^19.3.0
         version: 19.3.0
       zod:
-        specifier: ^4.5.4
-        version: 4.5.4
+        specifier: ^4.6.5
+        version: 4.6.5
     devDependencies:
       '@types/diff':
         specifier: ^6.0.0
@@ -95,10 +95,10 @@ importers:
     dependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.128.0
-        version: 0.128.0(zod@4.5.4)
+        version: 0.128.0(zod@4.6.5)
       '@modelcontextprotocol/sdk':
         specifier: ^1.11.0
-        version: 1.30.0(zod@4.5.4)
+        version: 1.30.0(zod@4.6.5)
       ajv:
         specifier: ^8.17.1
         version: 8.20.0
@@ -116,10 +116,10 @@ importers:
         version: 10.2.6
       openai:
         specifier: ^7.23.0
-        version: 7.23.0(ws@8.21.3)(zod@4.5.4)
+        version: 7.23.0(ws@8.21.3)(zod@4.6.5)
       zod:
-        specifier: ^4.5.4
-        version: 4.5.4
+        specifier: ^4.6.5
+        version: 4.6.5
     devDependencies:
       typescript:
         specifier: ^5.7.2
@@ -1505,8 +1505,8 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@4.5.4:
-    resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
+  zod@4.6.5:
+    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
 snapshots:
 
@@ -1515,12 +1515,12 @@ snapshots:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
 
-  '@anthropic-ai/sdk@0.128.0(zod@4.5.4)':
+  '@anthropic-ai/sdk@0.128.0(zod@4.6.5)':
     dependencies:
       json-schema-to-ts: 3.1.1
       standardwebhooks: 1.1.1
     optionalDependencies:
-      zod: 4.5.4
+      zod: 4.6.5
 
   '@babel/runtime@7.29.7': {}
 
@@ -1774,7 +1774,7 @@ snapshots:
       tinyglobby: 0.2.17
       yaml: 2.9.1
 
-  '@modelcontextprotocol/sdk@1.30.0(zod@4.5.4)':
+  '@modelcontextprotocol/sdk@1.30.0(zod@4.6.5)':
     dependencies:
       '@hono/node-server': 2.1.1(hono@4.13.7)
       ajv: 8.20.0
@@ -1791,8 +1791,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.5.4
-      zod-to-json-schema: 3.25.2(zod@4.5.4)
+      zod: 4.6.5
+      zod-to-json-schema: 3.25.2(zod@4.6.5)
     transitivePeerDependencies:
       - supports-color
 
@@ -2388,10 +2388,10 @@ snapshots:
     dependencies:
       mimic-fn: 2.1.0
 
-  openai@7.23.0(ws@8.21.3)(zod@4.5.4):
+  openai@7.23.0(ws@8.21.3)(zod@4.6.5):
     optionalDependencies:
       ws: 8.21.3
-      zod: 4.5.4
+      zod: 4.6.5
 
   package-manager-detector@1.8.0: {}
 
@@ -2715,8 +2715,8 @@ snapshots:
 
   yoga-layout@3.2.1: {}
 
-  zod-to-json-schema@3.25.2(zod@4.5.4):
+  zod-to-json-schema@3.25.2(zod@4.6.5):
     dependencies:
-      zod: 4.5.4
+      zod: 4.6.5
 
-  zod@4.5.4: {}
+  zod@4.6.5: {}
