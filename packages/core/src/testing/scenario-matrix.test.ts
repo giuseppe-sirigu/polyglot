@@ -27,8 +27,9 @@ describe("runScenarioAgainst", () => {
   it("never throws - a broken script becomes an aborted outcome", async () => {
     const scenario = SCENARIOS[0];
     if (!scenario) throw new Error("no scenarios");
-    // one turn, no tool call, no completion: the model just "stops" immediately
-    const outcome = await runScenarioAgainst({ ...scenario, goldenTurns: [""] }, [""]);
+    // no tool call, no completion: the model just "stops" - an empty reply is nudged twice
+    // (see runAgentTurn's empty-reply recovery), so it takes three empty turns to end
+    const outcome = await runScenarioAgainst({ ...scenario, goldenTurns: [""] }, ["", "", ""]);
     expect(outcome.taskDone).toBe(false);
     // stopped clean with nothing done - not aborted, but taskDone false and honestCompletion
     // is fine (empty text isn't a hand-off), so this is a "model did nothing" outcome.

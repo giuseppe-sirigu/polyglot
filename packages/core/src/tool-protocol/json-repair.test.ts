@@ -141,3 +141,47 @@ describe("repairJson - trailing blob field (write_file with an unescaped file bo
     expect(String(v.content)).toContain('t.done ? "x" : " "');
   });
 });
+
+describe("repairJson - stray punctuation after a complete object (captured live on qwen2.5-coder:7b)", () => {
+  // Before the fix these came back as {"path": "sum.mjs\"}"} - a path that doesn't exist -
+  // and the model looped on "file not found" until max_steps.
+  it.each([
+    ['{"path": "sum.mjs"}"}', "sum.mjs"],
+    ['{"path": "sum.mjs"}}', "sum.mjs"],
+    ['{"pattern": "**/*.mjs"}"}', undefined],
+  ])("takes the object as written: %s", (body, path) => {
+    const v = ok(repairJson(body));
+    if (path) expect(v.path).toBe(path);
+    else expect(v.pattern).toBe("**/*.mjs");
+  });
+
+  it("does not trim when real content follows the object", () => {
+    const r = repairJson('{"path": "a"} and then {"path": "b"}');
+    expect(r.ok && (r.value as Record<string, unknown>).path).not.toBe('a"}');
+  });
+
+  // Captured on qwen2.5-coder 32B: no close tag, then an invented next turn. Before the fix
+  // the path came back as `greet.mjs"}\n选出` and the edit wrote `"}\noutput>` into the file.
+  it.each([
+    ['{"path": "greet.mjs"}\n选出', { path: "greet.mjs" }],
+    [
+      '{"path":"utils.mjs", "old_string":"a", "new_string":"b"}\noutput>\n<tool_result name="edit_file">\nEdited utils.mjs\n</tool_result>',
+      { path: "utils.mjs", old_string: "a", new_string: "b" },
+    ],
+  ])("drops an invented turn after the object: %s", (body, expected) => {
+    expect(ok(repairJson(body))).toEqual(expected);
+  });
+
+  it("still merges objects split across lines", () => {
+    expect(ok(repairJson('{"path": "a"}\n{"content": "b"}'))).toEqual({ path: "a", content: "b" });
+  });
+
+  it("strips a stray closing brace after a quoted loose value", () => {
+    expect(ok(repairJson('"path": "sum.mjs"}')).path).toBe("sum.mjs");
+    expect(ok(repairJson('path: "sum.mjs"}')).path).toBe("sum.mjs");
+  });
+
+  it("keeps balanced braces inside an unquoted loose value", () => {
+    expect(ok(repairJson("pattern: src/{a,b}.ts")).pattern).toBe("src/{a,b}.ts");
+  });
+});

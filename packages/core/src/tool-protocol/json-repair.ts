@@ -98,6 +98,15 @@ export function repairJsonFastPath(text: string): RepairResult | null {
 export function repairJsonSlowPath(text: string): RepairResult {
   const trimmed = stripEnclosingWrapper(text);
 
+  // A complete, valid object followed only by stray closing punctuation (`{"path": "a"}"}`,
+  // `{"path": "a"}}`) - take the object as written. Without this the looser fallbacks below
+  // folded the stray `"}` into the last string value (`"a\"}"`), turning a nearly-right call
+  // into a wrong one: a file that "does not exist", and a model looping until max_steps.
+  const leading = extractLeadingObject(trimmed);
+  if (leading) {
+    return { ok: true, value: leading, repaired: true, strategy: "jsonrepair" };
+  }
+
   try {
     const repaired = jsonrepair(trimmed);
     const value = JSON.parse(repaired);
@@ -149,6 +158,65 @@ export function repairJsonSlowPath(text: string): RepairResult {
  * CLI's single-request-at-a-time path has no reason to split fast/slow itself). */
 export function repairJson(text: string): RepairResult {
   return repairJsonFastPath(text) ?? repairJsonSlowPath(text);
+}
+
+/** Only closing punctuation, quotes and whitespace - what models leave after a finished object. */
+const STRAY_TRAILING_PUNCTUATION = /^[\s"'`}\],;]*$/;
+
+/** A finished object, then a new line of something that is not more JSON: a botched close
+ * tag and an invented next turn (`\noutput>\n<tool_result ...`, `\n选出`). The line break
+ * ends the call; keep a following `{` out so split objects still merge below. */
+function isRunawayLine(rest: string): boolean {
+  const m = /^[ \t"'`}\],;]*\n/.exec(rest);
+  return m !== null && !rest.slice(m[0].length).trimStart().startsWith("{");
+}
+
+function extractLeadingObject(text: string): Record<string, unknown> | null {
+  if (!text.startsWith("{")) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) {
+        const rest = text.slice(i + 1);
+        if (!STRAY_TRAILING_PUNCTUATION.test(rest) && !isRunawayLine(rest)) return null;
+        return strictObject(text.slice(0, i + 1));
+      }
+    }
+  }
+  return null;
+}
+
+/** Unwraps one quoted scalar, ignoring closing punctuation after the closing quote
+ * (`"a.mjs"}` → `a.mjs`); an unquoted value loses only unbalanced trailing `}`/`]`. */
+function unquoteLooseValue(raw: string): string {
+  const t = raw.trim();
+  const quote = t[0];
+  if (quote === '"' || quote === "'") {
+    const close = t.lastIndexOf(quote);
+    if (close > 0 && STRAY_TRAILING_PUNCTUATION.test(t.slice(close + 1))) {
+      return t.slice(1, close);
+    }
+  }
+  let s = t;
+  while (
+    (s.endsWith("}") && s.split("}").length > s.split("{").length) ||
+    (s.endsWith("]") && s.split("]").length > s.split("[").length)
+  ) {
+    s = s.slice(0, -1).trimEnd();
+  }
+  return s;
 }
 
 function strictObject(text: string): Record<string, unknown> | null {
@@ -244,7 +312,7 @@ function extractLooseKeyValuePairs(text: string): Record<string, unknown> | null
     const pair = splitKeyValueLine(line);
     if (!pair) continue;
     matchedAny = true;
-    result[pair[0]] = coerceScalar(dropTrailingComma(pair[1]).trim());
+    result[pair[0]] = coerceScalar(unquoteLooseValue(dropTrailingComma(pair[1])));
   }
 
   return matchedAny ? result : null;

@@ -4,7 +4,93 @@ import type { ParsedToolCall, RawToolCallEnvelope, ToolCallParseError } from "./
 import { validateAgainstSchema } from "./validator.js";
 
 const NAME_ALIASES = ["name", "tool", "function", "tool_name"];
+/** Qwen's natively-trained call body: `<function=read_file>` then `<parameter=path>a</parameter>`
+ * (or `<parameter name="path">`), seen live on Qwen3.8-27B - even with the `>` dropped. */
+const QWEN_FUNCTION = /^\s*<function\s*=\s*([\w.-]+)/i;
+/** The head of one `<parameter...>` segment, matched only at the segment's start. */
+const QWEN_PARAMETER_HEAD = /^\s*(?:=\s*|name\s*=\s*["'])([\w-]+)["']?\s*>\n?/i;
+
+/** Splits on `<parameter` and reads each segment up to its `</parameter>` - linear in the
+ * body, unlike one lazy regex across it, which backtracks on a body full of unclosed tags. */
+function qwenParameters(body: string): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  const segments = body.split(/<parameter/i).slice(1);
+  for (const segment of segments) {
+    const head = QWEN_PARAMETER_HEAD.exec(segment);
+    if (!head) continue;
+    const rest = segment.slice(head[0].length);
+    const end = rest.toLowerCase().indexOf("</parameter>");
+    if (end === -1) continue;
+    args[head[1] as string] = unquoteParameter(rest.slice(0, end).replace(/\n$/, ""));
+  }
+  return args;
+}
+const NESTED_NAMED_OPEN = /^\s*<tool[_-]?call\b[^>\n]*?\bname\s*=\s*["']([^"']+)["'][^>\n]*>/i;
 const ARGS_ALIASES = ["arguments", "input", "parameters", "args"];
+
+/** Names that mean "a tool call" rather than naming a tool - gpt-oss via Ollama emits native
+ * calls named "tool_call" (echoing our own tag), with the real call inside the arguments. */
+const WRAPPER_NAMES = new Set(["tool_call", "toolcall", "tool", "function", "call", "tool_use"]);
+
+/** A tool a model was trained on, mapped onto ours. gpt-oss calls its built-in shell as
+ * `container.exec` with `{"cmd": ["bash", "-lc", "<command>"]}`. */
+const FOREIGN_SHELL_TOOLS = new Set(["container.exec", "shell"]);
+const SHELL_BINARIES = new Set(["bash", "sh", "zsh"]);
+
+function shellWords(words: string[]): string {
+  return words
+    .map((w) => (/^[\w./:=@%+-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`))
+    .join(" ");
+}
+
+/** `["bash", "-lc", "ls -R"]` → `ls -R`; any other argv is joined with shell quoting. */
+function commandFromArgv(cmd: unknown): string | null {
+  if (typeof cmd === "string") return cmd;
+  if (!Array.isArray(cmd) || cmd.length === 0 || !cmd.every((w) => typeof w === "string")) {
+    return null;
+  }
+  const argv = cmd as string[];
+  const shell = (argv[0] ?? "").split("/").at(-1) ?? "";
+  if (argv.length === 3 && SHELL_BINARIES.has(shell) && /^-l?c$/.test(argv[1] ?? "")) {
+    return argv[2] as string;
+  }
+  return shellWords(argv);
+}
+
+/** Maps a call to a tool the model was trained on (not one of ours) onto our equivalent, or
+ * returns null. Only used once the requested name has already failed to resolve. */
+function translateForeignCall(
+  name: string,
+  input: unknown,
+  registry: ToolRegistry,
+): { name: string; input: unknown } | null {
+  // A trained namespace in front of one of our names: `functions.read_file`, `browser.glob`,
+  // `repo_browser.read_file` (all seen from gpt-oss).
+  const dot = name.lastIndexOf(".");
+  if (dot > 0 && registry.get(name.slice(dot + 1))) {
+    return { name: name.slice(dot + 1), input };
+  }
+  if (FOREIGN_SHELL_TOOLS.has(name.toLowerCase()) && registry.get("bash") && isPlainObject(input)) {
+    const command = commandFromArgv(input.cmd ?? input.command);
+    if (command) return { name: "bash", input: { command } };
+  }
+  return null;
+}
+
+/** The single registered tool whose schema these arguments fit - every required key present,
+ * no key the schema doesn't declare - or null when none or several fit. */
+export function inferToolByArguments(input: unknown, registry: ToolRegistry): string | null {
+  if (!isPlainObject(input) || Object.keys(input).length === 0) return null;
+  const keys = Object.keys(input);
+  const fits = registry.list().filter((tool) => {
+    const props = isPlainObject(tool.inputSchema.properties) ? tool.inputSchema.properties : {};
+    const required = requiredKeys(tool.inputSchema);
+    return (
+      required.length > 0 && required.every((k) => k in input) && keys.every((k) => k in props)
+    );
+  });
+  return fits.length === 1 ? (fits[0]?.name ?? null) : null;
+}
 
 /** Appended to "could not parse the body as JSON" errors - the failure is almost always a
  * string value (usually file content) with a raw `"` or newline in it, or the whole thing
@@ -28,10 +114,58 @@ export function resolveEnvelopeFromRepair(
   repaired: ReturnType<typeof repairJson>,
   registry: ToolRegistry,
 ): ParsedToolCall | ToolCallParseError {
+  // `<tool_call>` then `<tool_call name="read_file">` on the next line (seen live on
+  // Qwen3.8-27B): the outer, nameless tag is a stutter; the named one inside is the call.
+  const nested =
+    envelope.variant === "xml" && !envelope.declaredName
+      ? NESTED_NAMED_OPEN.exec(envelope.body)
+      : null;
+  if (nested) {
+    return resolveEnvelope(
+      {
+        ...envelope,
+        declaredName: nested[1] as string,
+        body: envelope.body.slice(nested[0].length),
+      },
+      registry,
+    );
+  }
+  const qwen =
+    envelope.variant === "xml" && !envelope.declaredName ? QWEN_FUNCTION.exec(envelope.body) : null;
+  if (qwen) {
+    return finalize(envelope, qwen[1] as string, qwenParameters(envelope.body), registry, true);
+  }
   if (envelope.variant === "xml") {
     return resolveXmlEnvelope(envelope, repaired, registry);
   }
   return resolveFencedEnvelope(envelope, repaired, registry);
+}
+
+/**
+ * A reply that ends in a bare JSON object of arguments with no tool name anywhere (seen live on
+ * gpt-oss: `{"path": "main.mjs", "old_string": "...", "new_string": "..."}` as the whole reply).
+ * Treated as a call only when exactly one registered tool fits the keys - otherwise it is an
+ * answer that happens to be JSON, and stays one.
+ */
+export function resolveTrailingArguments(
+  text: string,
+  registry: ToolRegistry,
+): ParsedToolCall | null {
+  const trimmed = text.trimEnd();
+  if (!trimmed.endsWith("}") || trimmed.length > 20_000) return null;
+  for (let i = trimmed.indexOf("{"); i !== -1; i = trimmed.indexOf("{", i + 1)) {
+    let value: unknown;
+    try {
+      value = JSON.parse(trimmed.slice(i));
+    } catch {
+      continue;
+    }
+    const name = inferToolByArguments(value, registry);
+    if (!name) return null;
+    const resolved = finalize({ raw: trimmed.slice(i) }, name, value, registry, true);
+    return "message" in resolved ? null : resolved;
+  }
+  return null;
 }
 
 function escapeRegExp(s: string): string {
@@ -40,6 +174,25 @@ function escapeRegExp(s: string): string {
 
 function requiredKeys(schema: JsonSchema): string[] {
   return Array.isArray(schema.required) ? (schema.required as string[]) : [];
+}
+
+function soleRequiredString(schema: JsonSchema): string | null {
+  const req = requiredKeys(schema);
+  const props = isPlainObject(schema.properties) ? schema.properties : {};
+  const prop = req.length === 1 ? props[req[0] as string] : undefined;
+  return isPlainObject(prop) && prop.type === "string" ? (req[0] as string) : null;
+}
+
+/** `"util.mjs"` → `util.mjs`; anything that isn't a JSON string stays as written. */
+function unquoteParameter(raw: string): string {
+  const t = raw.trim();
+  if (!t.startsWith('"')) return raw;
+  try {
+    const v: unknown = JSON.parse(t);
+    return typeof v === "string" ? v : raw;
+  } catch {
+    return raw;
+  }
 }
 
 function hasAllRequired(schema: JsonSchema, value: unknown): boolean {
@@ -73,7 +226,9 @@ function extractBySchema(body: string, schema: JsonSchema): Record<string, unkno
     const cur = markers[i] as (typeof markers)[number];
     const end =
       i + 1 < markers.length ? (markers[i + 1] as (typeof markers)[number]).start : body.length;
-    let value = body.slice(cur.valueAt, end);
+    // A closing tag the stream parser didn't recognise as one can trail the last value; it is
+    // never part of an argument.
+    let value = body.slice(cur.valueAt, end).replace(/\s*<\/[\w-]+[^>\n]*>\s*$/, "");
 
     const quoted = /^\s*(["'`])/.exec(value);
     if (quoted) {
@@ -103,16 +258,37 @@ function resolveXmlEnvelope(
 ): ParsedToolCall | ToolCallParseError {
   let declaredName = envelope.declaredName;
   let input: unknown = {};
+  // A wrapper name ("tool_call") doesn't name a tool: look for the real one in the body.
+  let inferred = false;
+  if (
+    declaredName &&
+    WRAPPER_NAMES.has(declaredName.toLowerCase()) &&
+    !registry.get(declaredName)
+  ) {
+    declaredName = null;
+    inferred = true;
+  }
 
   if (repaired.ok && isPlainObject(repaired.value)) {
     // some models redundantly restate the name inside the JSON body - prefer the
     // attribute if present, otherwise fall back to a name found inside the body.
+    const nameFromBody = !declaredName;
     if (!declaredName) {
       declaredName = firstStringField(repaired.value, NAME_ALIASES);
     }
     input = stripAliasKeys(repaired.value, [...NAME_ALIASES]);
+    // {"name": "bash", "args": {...}} - the arguments sit one level down.
+    if (nameFromBody && declaredName && isPlainObject(input)) {
+      const nested = firstObjectField(input, ARGS_ALIASES);
+      if (nested && Object.keys(input).length === 1) input = nested;
+    }
   } else if (repaired.ok) {
     input = repaired.value;
+  }
+
+  // No name anywhere, but the arguments fit exactly one tool ({"command": "ls"} → bash).
+  if (!declaredName && inferred) {
+    declaredName = inferToolByArguments(input, registry);
   }
 
   if (!declaredName) {
@@ -134,6 +310,19 @@ function resolveXmlEnvelope(
     }
   }
 
+  // `<glob>**/service.json</glob>` (seen live on Devstral): a bare string body for a tool whose
+  // one required argument is a string is that argument - only a single token (a path or a
+  // pattern), so a prose reply in the body stays an error.
+  if (tool && !hasAllRequired(tool.inputSchema, input)) {
+    const sole = soleRequiredString(tool.inputSchema);
+    const body = envelope.body.trim();
+    const closeTag = body.endsWith(">") ? body.lastIndexOf("</") : -1;
+    const text = (closeTag >= 0 ? body.slice(0, closeTag) : body).trim();
+    if (sole && text && !/[{}\s]/.test(text) && text.length <= 500) {
+      return finalize(envelope, declaredName, { [sole]: text }, registry, true);
+    }
+  }
+
   if (!repaired.ok) {
     return {
       raw: envelope.raw,
@@ -142,7 +331,14 @@ function resolveXmlEnvelope(
     };
   }
 
-  return finalize(envelope, declaredName, input, registry, repaired.repaired, repaired.strategy);
+  return finalize(
+    envelope,
+    declaredName,
+    input,
+    registry,
+    repaired.repaired || inferred,
+    repaired.strategy,
+  );
 }
 
 function resolveFencedEnvelope(
@@ -184,6 +380,12 @@ export function finalize(
   repaired = false,
   strategy?: RepairStrategy,
 ): ParsedToolCall | ToolCallParseError {
+  const foreign = registry.get(requestedName)
+    ? null
+    : translateForeignCall(requestedName, input, registry);
+  if (foreign) {
+    return finalize(source, foreign.name, foreign.input, registry, true, strategy);
+  }
   const { tool, correctedFrom } = resolveToolName(requestedName, registry);
   if (!tool) {
     return {
