@@ -1,8 +1,19 @@
 import type { ParserEvent, RawToolCallEnvelope } from "./types.js";
 
 const START_XML = /<tool[_-]?call\b/gi;
-/** A `<tool_call` at the end of the buffer whose tag, or the JSON after it, hasn't arrived yet. */
-const PENDING_GLUED_XML = /<tool[_-]?call\b(?:[^>\n]*|[^>\n]*>\s*)$/i;
+/** The last `<tool_call` in the buffer, anchored there: its tag, or the JSON after it, hasn't
+ * arrived yet. Matched from `lastIndexOf` rather than searched for, which is quadratic. */
+const PENDING_GLUED_XML = /^<tool[_-]?call\b[^>\n]*(?:>\s*)?$/i;
+
+/** A whole `<tool_call ...>` tag (bounded, so a run of unclosed tags stays linear) followed by
+ * JSON - checked in place at each candidate with a sticky regex instead of slicing the buffer. */
+const GLUED_XML_CALL = /<tool[_-]?call\b[^>\n]{0,500}>\s*\{/iy;
+const JSON_FOLLOWS = /\s*\{/y;
+
+function pendingGluedXml(buffer: string): number {
+  const at = buffer.toLowerCase().lastIndexOf("<tool");
+  return at >= 0 && PENDING_GLUED_XML.test(buffer.slice(at)) ? at : -1;
+}
 const START_FENCE = /```[ \t]*(tool_call|toolcall)\b[ \t]*\n/gi;
 // Accepts "</tool_call>" as documented, but also the shorter "</tool>" some models default to
 // when abbreviating a closing tag, and "</tool_result>" (seen live on qwen3.8-27b: a model
@@ -292,7 +303,7 @@ export class ToolCallStreamParser {
         }
       }
       // A `<tool_call` glued onto prose may still turn out to be a call once its JSON arrives.
-      const gluedTag = this.buffer.search(PENDING_GLUED_XML);
+      const gluedTag = pendingGluedXml(this.buffer);
       if (gluedTag >= 0) safeLen = Math.min(safeLen, gluedTag);
       if (safeLen > 0) {
         const text = this.consumeFront(safeLen);
@@ -402,16 +413,8 @@ export class ToolCallStreamParser {
     START_XML.lastIndex = 0;
     for (let m = START_XML.exec(this.buffer); m !== null; m = START_XML.exec(this.buffer)) {
       if (isAtLineStart(this.buffer, m.index, this.precedingChar)) return m;
-      const close = this.buffer.indexOf(">", m.index);
-      const tag = close === -1 ? "" : this.buffer.slice(m.index, close);
-      if (
-        close !== -1 &&
-        !tag.includes("\n") &&
-        this.buffer
-          .slice(close + 1)
-          .trimStart()
-          .startsWith("{")
-      ) {
+      GLUED_XML_CALL.lastIndex = m.index;
+      if (GLUED_XML_CALL.test(this.buffer)) {
         return m;
       }
     }
@@ -422,8 +425,8 @@ export class ToolCallStreamParser {
     const regex = this.startNameTag as RegExp;
     regex.lastIndex = 0;
     for (let m = regex.exec(this.buffer); m !== null; m = regex.exec(this.buffer)) {
-      const after = this.buffer.slice(m.index + m[0].length).trimStart();
-      const jsonFollows = after.startsWith("{");
+      JSON_FOLLOWS.lastIndex = m.index + m[0].length;
+      const jsonFollows = JSON_FOLLOWS.test(this.buffer);
       // An invented suffix (`<glob_pattern>`) is only a call when its JSON arguments follow.
       if (m[2] && m[2].toLowerCase() !== "call") {
         if (jsonFollows) return m;

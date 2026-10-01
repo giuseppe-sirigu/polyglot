@@ -7,8 +7,24 @@ const NAME_ALIASES = ["name", "tool", "function", "tool_name"];
 /** Qwen's natively-trained call body: `<function=read_file>` then `<parameter=path>a</parameter>`
  * (or `<parameter name="path">`), seen live on Qwen3.8-27B - even with the `>` dropped. */
 const QWEN_FUNCTION = /^\s*<function\s*=\s*([\w.-]+)/i;
-const QWEN_PARAMETER =
-  /<parameter\s*(?:=\s*|name\s*=\s*["'])([\w-]+)["']?\s*>\n?([\s\S]*?)\n?<\/parameter>/gi;
+/** The head of one `<parameter...>` segment, matched only at the segment's start. */
+const QWEN_PARAMETER_HEAD = /^\s*(?:=\s*|name\s*=\s*["'])([\w-]+)["']?\s*>\n?/i;
+
+/** Splits on `<parameter` and reads each segment up to its `</parameter>` - linear in the
+ * body, unlike one lazy regex across it, which backtracks on a body full of unclosed tags. */
+function qwenParameters(body: string): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  const segments = body.split(/<parameter/i).slice(1);
+  for (const segment of segments) {
+    const head = QWEN_PARAMETER_HEAD.exec(segment);
+    if (!head) continue;
+    const rest = segment.slice(head[0].length);
+    const end = rest.toLowerCase().indexOf("</parameter>");
+    if (end === -1) continue;
+    args[head[1] as string] = unquoteParameter(rest.slice(0, end).replace(/\n$/, ""));
+  }
+  return args;
+}
 const NESTED_NAMED_OPEN = /^\s*<tool[_-]?call\b[^>\n]*?\bname\s*=\s*["']([^"']+)["'][^>\n]*>/i;
 const ARGS_ALIASES = ["arguments", "input", "parameters", "args"];
 
@@ -117,11 +133,7 @@ export function resolveEnvelopeFromRepair(
   const qwen =
     envelope.variant === "xml" && !envelope.declaredName ? QWEN_FUNCTION.exec(envelope.body) : null;
   if (qwen) {
-    const args: Record<string, unknown> = {};
-    for (const m of envelope.body.matchAll(QWEN_PARAMETER)) {
-      args[m[1] as string] = unquoteParameter(m[2] as string);
-    }
-    return finalize(envelope, qwen[1] as string, args, registry, true);
+    return finalize(envelope, qwen[1] as string, qwenParameters(envelope.body), registry, true);
   }
   if (envelope.variant === "xml") {
     return resolveXmlEnvelope(envelope, repaired, registry);
@@ -303,10 +315,9 @@ function resolveXmlEnvelope(
   // pattern), so a prose reply in the body stays an error.
   if (tool && !hasAllRequired(tool.inputSchema, input)) {
     const sole = soleRequiredString(tool.inputSchema);
-    const text = envelope.body
-      .trim()
-      .replace(/<\/[\w-]+[^>\n]*>$/, "")
-      .trim();
+    const body = envelope.body.trim();
+    const closeTag = body.endsWith(">") ? body.lastIndexOf("</") : -1;
+    const text = (closeTag >= 0 ? body.slice(0, closeTag) : body).trim();
     if (sole && text && !/[{}\s]/.test(text) && text.length <= 500) {
       return finalize(envelope, declaredName, { [sole]: text }, registry, true);
     }

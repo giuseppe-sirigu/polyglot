@@ -485,6 +485,13 @@ describe("resolveEnvelope - Qwen's native <function=...> body (captured live on 
     expect([r.name, r.input]).toEqual(["read_file", { path: "util.mjs" }]);
   });
 
+  it("stays fast on a body full of unclosed parameter tags (CodeQL js/polynomial-redos)", () => {
+    const body = `<function=read_file>${"<parameter=->a".repeat(50_000)}`;
+    const start = performance.now();
+    resolveEnvelope(xmlEnvelope(null, body), buildRegistry());
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
   it("names the tool in the error when the parameters are missing", () => {
     const r = resolveEnvelope(
       xmlEnvelope(null, "\n<function=read_file</function>\n"),
@@ -504,6 +511,13 @@ describe("resolveEnvelope - a bare string body (captured live on Devstral)", () 
       expect(r.input).toEqual({ path: body.replace("</lib>", "").trim() });
     },
   );
+
+  it("stays fast on a body full of broken close tags (CodeQL js/polynomial-redos)", () => {
+    const body = `</-${"-".repeat(100_000)}`;
+    const start = performance.now();
+    resolveEnvelope(xmlEnvelope("read_file", body), buildRegistry());
+    expect(performance.now() - start).toBeLessThan(500);
+  });
 
   it("does not apply to prose", () => {
     const r = resolveEnvelope(xmlEnvelope("read_file", "\nnot json at all\n"), buildRegistry());

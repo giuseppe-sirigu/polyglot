@@ -550,6 +550,17 @@ describe("ToolCallStreamParser - calls glued onto prose (captured live on Devstr
     }
   });
 
+  it("stays fast on prose full of unclosed <tool_call tags", () => {
+    const toolNames = ["read_file", "glob"];
+    for (const text of ["x <tool_call ".repeat(20_000), "x <glob ".repeat(20_000)]) {
+      const start = performance.now();
+      const p = new ToolCallStreamParser({ toolNames });
+      for (let i = 0; i < text.length; i += 4096) p.push(text.slice(i, i + 4096));
+      p.flush();
+      expect(performance.now() - start).toBeLessThan(1000);
+    }
+  });
+
   it("leaves a <tool_call> tag mentioned mid-sentence as text", () => {
     expect(envelopes("Wrap each call in a <tool_call> tag, then stop.")).toEqual([]);
   });
