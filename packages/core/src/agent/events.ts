@@ -62,4 +62,7 @@ export type AgentEvent =
   // Emitted when the model returned nothing (no text, no tool call) and was asked to continue
   // instead of the empty reply ending the turn. `attempt` counts nudges within this user turn.
   | { type: "empty_reply_nudged"; attempt: number }
+  /** The server read far less of the prompt than it was sent: its context window is probably
+   * truncating it (see providers/context-window.ts). Sent once per run. */
+  | { type: "context_truncated"; estimatedTokens: number; reportedTokens: number }
   | { type: "agent_stop"; reason: "done" | "max_steps" | "unreliable_model" };

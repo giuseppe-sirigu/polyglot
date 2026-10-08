@@ -1551,6 +1551,13 @@ export function App({
           if (event.type === "agent_stop" && event.reason === "max_steps") {
             pushItem({ kind: "system", tone: "warn", text: "Hit the step limit for this turn." });
           }
+          if (event.type === "context_truncated") {
+            pushItem({
+              kind: "system",
+              tone: "warn",
+              text: `The model server read about ${event.reportedTokens.toLocaleString()} of the ~${event.estimatedTokens.toLocaleString()} prompt tokens sent: its context window is probably cutting off the start of the prompt (instructions and tool docs), so answers and tool calls will suffer. Raise the server's context window (Ollama: OLLAMA_CONTEXT_LENGTH, or num_ctx in a Modelfile; llama.cpp: -c; vLLM: --max-model-len).`,
+            });
+          }
           if (event.type === "model_fell_back") {
             fellBack = true;
             pushItem({

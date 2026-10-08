@@ -1,5 +1,6 @@
 import type { HookDispatcher } from "../hooks/dispatcher.js";
 import type { PermissionGate } from "../permissions/gate.js";
+import { checkTruncation } from "../providers/context-window.js";
 import type { ProviderAdapter } from "../providers/types.js";
 import type { Message, Session } from "../session/types.js";
 import { finalize, resolveEnvelope, resolveTrailingArguments } from "../tool-protocol/resolve.js";
@@ -160,6 +161,8 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     return true;
   }
 
+  // Reported once per run: the cause (a too-small context window) doesn't change between turns.
+  let warnedTruncation = false;
   for (let step = 0; step < maxSteps; step++) {
     onEvent({ type: "turn_start" });
 
@@ -214,6 +217,18 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
           // the real prompt-size count is worth recording as the session's context size.
           if (event.inputTokens > 0) {
             session.lastContextTokens = event.inputTokens;
+            if (!warnedTruncation) {
+              const sentChars = chatMessages.reduce((n, m) => n + m.content.length, 0);
+              const check = checkTruncation(sentChars, event.inputTokens);
+              if (check.truncated) {
+                warnedTruncation = true;
+                onEvent({
+                  type: "context_truncated",
+                  estimatedTokens: check.estimatedTokens,
+                  reportedTokens: check.reportedTokens,
+                });
+              }
+            }
           }
         }
       }
