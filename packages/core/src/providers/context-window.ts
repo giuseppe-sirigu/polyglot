@@ -51,7 +51,7 @@ export async function probeOllamaContext(
   model: string,
   signal?: AbortSignal,
 ): Promise<OllamaContext> {
-  const root = baseURL.replace(/\/+$/, "").replace(/\/v1$/, "");
+  const root = ollamaRoot(baseURL);
   const result: OllamaContext = {};
   try {
     const res = await fetch(`${root}/api/ps`, { signal });
@@ -76,6 +76,15 @@ export async function probeOllamaContext(
   return result;
 }
 
+/** `http://host:11434/v1/` -> `http://host:11434`. Plain string operations rather than a regular
+ * expression, so a URL with a long run of slashes can't make it slow. */
+export function ollamaRoot(baseURL: string): string {
+  let end = baseURL.length;
+  while (end > 0 && baseURL.charCodeAt(end - 1) === 47 /* "/" */) end--;
+  const trimmed = baseURL.slice(0, end);
+  return trimmed.endsWith("/v1") ? trimmed.slice(0, -3) : trimmed;
+}
+
 /** `/api/ps`: `{ models: [{ name, model, context_length }] }`, the loaded models. */
 export function parseOllamaPs(body: unknown, model: string): number | undefined {
   const models = (body as { models?: unknown } | null)?.models;
@@ -97,8 +106,12 @@ export function parseOllamaShow(body: unknown): Pick<OllamaContext, "configured"
   if (!body || typeof body !== "object") return out;
   const { parameters, model_info } = body as { parameters?: unknown; model_info?: unknown };
   if (typeof parameters === "string") {
-    const m = /^\s*num_ctx\s+(\d+)\s*$/m.exec(parameters);
-    if (m) out.configured = Number(m[1]);
+    // One parameter per line ("num_ctx 8192"); parsed line by line, without a multiline regex.
+    for (const line of parameters.split("\n")) {
+      const [key, value, ...rest] = line.trim().split(/\s+/);
+      if (key === "num_ctx" && rest.length === 0 && value !== undefined && /^\d+$/.test(value))
+        out.configured = Number(value);
+    }
   }
   if (model_info && typeof model_info === "object") {
     for (const [key, value] of Object.entries(model_info as Record<string, unknown>)) {

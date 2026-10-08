@@ -9,6 +9,7 @@ import { ToolRegistry } from "../tools/types.js";
 import {
   checkTruncation,
   effectiveOllamaContext,
+  ollamaRoot,
   parseOllamaPs,
   parseOllamaShow,
   probeOllamaContext,
@@ -55,6 +56,16 @@ describe("Ollama's context window", () => {
     expect(parseOllamaShow({ model_info: { "llama.context_length": 8192 } })).toEqual({
       trained: 8192,
     });
+  });
+
+  it("finds Ollama's own API next to its OpenAI-compatible one, quickly even for a hostile URL", () => {
+    expect(ollamaRoot("http://h:11434/v1")).toBe("http://h:11434");
+    expect(ollamaRoot("http://h:11434/v1///")).toBe("http://h:11434");
+    expect(ollamaRoot("http://h:11434")).toBe("http://h:11434");
+    const start = Date.now();
+    ollamaRoot(`http://h/${"/".repeat(100_000)}x`);
+    parseOllamaShow({ parameters: `${"\n".repeat(100_000)}num_ctx 4096` });
+    expect(Date.now() - start).toBeLessThan(200);
   });
 
   it("prefers the loaded window, then num_ctx; the trained maximum isn't what runs", () => {
