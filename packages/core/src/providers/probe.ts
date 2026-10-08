@@ -6,11 +6,19 @@ import {
   buildEnvelopeSchema,
   parseStructuredEnvelope,
 } from "../tool-protocol/structured-schema.js";
+import {
+  type OllamaContext,
+  effectiveOllamaContext,
+  probeOllamaContext,
+} from "./context-window.js";
 import type { ProviderAdapter, ProviderCapabilities } from "./types.js";
 
 export interface ProbeResult {
   /** Context window from the backend's model metadata, when it exposes any. */
   maxContextTokens?: number;
+  /** For an Ollama server: its window as loaded, as configured (`num_ctx`), and the model's trained
+   * maximum, as far as Ollama reports them. */
+  ollamaContext?: OllamaContext;
   /** Whether a schema-constrained request actually came back as a parseable envelope. */
   structuredOutput?: boolean;
   /** Whether the backend reported prompt-token counts in the stream. */
@@ -78,6 +86,19 @@ export async function probeCapabilities(
       }
     } catch {
       // /models is optional and its shape varies - a miss here is fine.
+    }
+    // Ollama's /v1/models omits the window; its own API has it.
+    if (result.maxContextTokens === undefined) {
+      const ollama = await probeOllamaContext(
+        config.baseURL,
+        config.model,
+        probeSignal(opts.signal, timeoutMs),
+      );
+      if (Object.keys(ollama).length > 0) {
+        result.ollamaContext = ollama;
+        const effective = effectiveOllamaContext(ollama);
+        if (effective) result.maxContextTokens = effective;
+      }
     }
   }
 

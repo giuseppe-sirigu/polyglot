@@ -123,6 +123,12 @@ export {
   saveCachedCapabilities,
 } from "./providers/probe.js";
 export type { ProbeResult } from "./providers/probe.js";
+export {
+  checkTruncation,
+  effectiveOllamaContext,
+  probeOllamaContext,
+} from "./providers/context-window.js";
+export type { OllamaContext, TruncationCheck } from "./providers/context-window.js";
 export { createSession } from "./session/types.js";
 export type { Message, Session } from "./session/types.js";
 export {

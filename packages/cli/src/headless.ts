@@ -530,6 +530,11 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
               );
             }
             break;
+          case "context_truncated":
+            process.stderr.write(
+              `[polyglot] the model server read about ${event.reportedTokens.toLocaleString()} of the ~${event.estimatedTokens.toLocaleString()} prompt tokens sent: its context window is probably cutting off the start of the prompt (instructions and tool docs). Raise the server's context window (Ollama: OLLAMA_CONTEXT_LENGTH, or num_ctx in a Modelfile; llama.cpp: -c; vLLM: --max-model-len).\n`,
+            );
+            break;
           case "model_fell_back":
             fellBackTo.push(event.to);
             process.stderr.write(
