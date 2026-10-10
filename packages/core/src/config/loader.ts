@@ -155,8 +155,8 @@ export function setTelemetryPreference(value: boolean): void {
 }
 
 /** Undefined = the user has never been asked. Mirrors getTelemetryPreference - whether to
- * report to a control plane is a per-machine choice, same reasoning. Consent is only asked
- * for at all when `POLYGLOT_CONTROL_PLANE_URL` is actually set (see App.tsx) - there's
+ * report to an HQ is a per-machine choice, same reasoning. Consent is only asked
+ * for at all when `POLYGLOT_HQ_URL` is actually set (see App.tsx) - there's
  * nothing to opt into otherwise. */
 export function getCentralAuditPreference(): boolean | undefined {
   const value = readRawSettingsFile(globalSettingsPath()).centralAudit;

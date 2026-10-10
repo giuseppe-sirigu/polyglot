@@ -119,8 +119,8 @@ export const SettingsSchema = z.object({
   telemetry: z.boolean().optional(),
   /** Whether polyglot may report audit events (tool calls, repairs, parse errors - projected
    * from the same AuditEvent the local audit log writes, argument hashes only unless raw-call
-   * reporting is separately opted into via POLYGLOT_CONTROL_PLANE_INCLUDE_RAW_CALLS) to a
-   * control plane at POLYGLOT_CONTROL_PLANE_URL. Undefined means "never asked" - only asked at
+   * reporting is separately opted into via POLYGLOT_HQ_INCLUDE_RAW_CALLS) to a
+   * team HQ at POLYGLOT_HQ_URL. Undefined means "never asked" - only asked at
    * all when that env var is actually set, since there's nothing to opt into otherwise. Lives
    * only in the global settings file, never merged from project-local settings (a per-machine
    * choice), mirroring telemetry/autoUpdate. */

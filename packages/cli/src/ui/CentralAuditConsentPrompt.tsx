@@ -28,7 +28,7 @@ export function CentralAuditConsentPrompt({
         Report audit events to {controlPlaneUrl}?
       </Text>
       <Text dimColor>
-        Your team has configured a control plane. If yes, polyglot reports tool calls, repairs, and
+        Your team has set up an HQ for its agents. If yes, polyglot reports tool calls, repairs, and
         parse errors from this session there - tool names, models, and argument hashes only, never
         raw arguments, file contents, or prompts, unless your team has separately turned on raw-call
         reporting. This is independent of local audit logging and telemetry. You can change this

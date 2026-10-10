@@ -138,7 +138,7 @@ async function runSubmit(args: CliArgs): Promise<number> {
   }
 
   // Deliberately no default here - this is a small, single-purpose, Polyglot-operated
-  // ingestion endpoint (not the customer's own control plane), and it isn't deployed yet.
+  // ingestion endpoint (not the customer's own HQ), and it isn't deployed yet.
   // Guessing a plausible-looking URL would be worse than erroring: it would look like a real,
   // decided endpoint when none exists.
   const submitUrl = process.env.POLYGLOT_REPORT_SUBMIT_URL;
