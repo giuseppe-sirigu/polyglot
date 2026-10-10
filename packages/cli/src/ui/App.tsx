@@ -78,6 +78,7 @@ import {
 import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type AgentInvocation, resolveAgentInvocation } from "../agentInvoke.js";
+import { hqSettings, oldNamesNotice } from "../hqSettings.js";
 import {
   type ResolvedModel,
   buildFailoverChain,
@@ -780,11 +781,12 @@ export function App({
     };
   }, [telemetrySink]);
 
-  // Both unset (the default) means no control plane configured at all - the reporter is a
+  // Both unset (the default) means no HQ configured at all - the reporter is a
   // no-op and consent is never even asked (see the effect below), mirroring the Gateway's own
   // "both unset = fully self-hosted, zero SaaS dependency" trust-boundary design.
-  const controlPlaneUrl = process.env.POLYGLOT_CONTROL_PLANE_URL;
-  const controlPlaneToken = process.env.POLYGLOT_CONTROL_PLANE_TOKEN;
+  const teamHq = useMemo(() => hqSettings(), []);
+  const controlPlaneUrl = teamHq.url;
+  const controlPlaneToken = teamHq.token;
   const [centralAuditEnabled, setCentralAuditEnabled] = useState(
     () => getCentralAuditPreference() === true,
   );
@@ -795,7 +797,7 @@ export function App({
         enabled: centralAuditEnabled,
         controlPlaneUrl,
         controlPlaneToken,
-        includeRawCalls: process.env.POLYGLOT_CONTROL_PLANE_INCLUDE_RAW_CALLS === "true",
+        includeRawCalls: teamHq.includeRawCalls,
       }),
     [session.id, centralAuditEnabled],
   );
@@ -809,6 +811,9 @@ export function App({
     startedRef.current = true;
     if (probeNote) {
       pushItem({ kind: "system", tone: "info", text: probeNote });
+    }
+    if (teamHq.oldNames.length > 0) {
+      pushItem({ kind: "system", tone: "warn", text: oldNamesNotice(teamHq.oldNames) });
     }
     if (resolved.redaction.invalidPatterns.length > 0) {
       pushItem({

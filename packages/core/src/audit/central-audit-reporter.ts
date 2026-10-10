@@ -30,7 +30,7 @@ const BATCH_SIZE = 20;
 const FLUSH_INTERVAL_MS = 5000;
 
 /**
- * Projects the same `AuditEvent` the local sink writes onto the control plane's wire shape.
+ * Projects the same `AuditEvent` the local sink writes onto HQ's wire shape.
  * `argsHash` is always present on a `tool_call` event regardless of the local `hashArgs`
  * setting (see audit-log.ts), so it's always safe to forward - only the verbatim `rawCall`
  * (present on every repaired tool_call, also regardless of local hashArgs) is gated by
@@ -109,7 +109,7 @@ function toWireEvent(event: AuditEvent, includeRawCalls: boolean): CentralAuditW
 /**
  * The CLI-side half of the pulled-forward-from-B3 visibility work (see the gateway MVP
  * plan's "Pulling forward action-level visibility" section) - opt-in, reports to a
- * customer's own control plane over `POLYGLOT_CONTROL_PLANE_URL`/`_TOKEN`, independent of
+ * customer's own HQ over `POLYGLOT_HQ_URL`/`_TOKEN`, independent of
  * whether this session's traffic ever touches a Gateway at all. Same shape as
  * `createAuditSink`/`createTelemetrySink` so it wires into the same `onEvent` callback
  * without a separate call site. Batches (flushes at `BATCH_SIZE` events or every

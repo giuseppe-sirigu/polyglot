@@ -53,6 +53,7 @@ import {
 } from "@usepolyglot/core";
 import { resolveAgentInvocation } from "./agentInvoke.js";
 import type { CliArgs } from "./args.js";
+import { hqSettings, oldNamesNotice } from "./hqSettings.js";
 import {
   buildFailoverChain,
   configuredModelEntries,
@@ -171,11 +172,14 @@ export async function runHeadless(args: CliArgs, resolved: ResolvedConfig): Prom
 
   // No consent prompt here - headless mode has no TTY to ask on. Only ever reports when the
   // user already answered "yes" interactively at some point (see App.tsx), same as telemetry.
+  const teamHq = hqSettings();
+  if (teamHq.oldNames.length > 0)
+    process.stderr.write(`[polyglot] ${oldNamesNotice(teamHq.oldNames)}\n`);
   const centralAuditReporter = createCentralAuditReporter({
     enabled: getCentralAuditPreference() === true,
-    controlPlaneUrl: process.env.POLYGLOT_CONTROL_PLANE_URL,
-    controlPlaneToken: process.env.POLYGLOT_CONTROL_PLANE_TOKEN,
-    includeRawCalls: process.env.POLYGLOT_CONTROL_PLANE_INCLUDE_RAW_CALLS === "true",
+    controlPlaneUrl: teamHq.url,
+    controlPlaneToken: teamHq.token,
+    includeRawCalls: teamHq.includeRawCalls,
   });
 
   const mcpServerNames = Object.keys(resolved.mcpServers);
