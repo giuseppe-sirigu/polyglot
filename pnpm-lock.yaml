@@ -73,8 +73,8 @@ importers:
         version: 4.6.5
     devDependencies:
       '@types/diff':
-        specifier: ^6.0.0
-        version: 6.0.0
+        specifier: ^8.0.0
+        version: 8.0.0
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -618,8 +618,9 @@ packages:
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
-  '@types/diff@6.0.0':
-    resolution: {integrity: sha512-dhVCYGv3ZSbzmQaBSagrv1WJ6rXCdkyTcDyoNu1MD8JohI7pR7k8wdZEm+mvdxRKXyHVwckFzWU1vJc+Z29MlA==}
+  '@types/diff@8.0.0':
+    resolution: {integrity: sha512-o7jqJM04gfaYrdCecCVMbZhNdG6T1MHg/oQoRFdERLV+4d+V7FijhiEAbFu0Usww84Yijk9yH58U4Jk4HbtzZw==}
+    deprecated: This is a stub types definition. diff provides its own type definitions, so you do not need this installed.
 
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
@@ -1887,7 +1888,9 @@ snapshots:
 
   '@types/deep-eql@4.0.2': {}
 
-  '@types/diff@6.0.0': {}
+  '@types/diff@8.0.0':
+    dependencies:
+      diff: 9.0.0
 
   '@types/estree@1.0.9': {}
 
