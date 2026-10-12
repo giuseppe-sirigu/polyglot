@@ -1,33 +1,85 @@
 import type { ToolDefinition } from "../tools/types.js";
 
-function renderSchemaAsPseudoType(schema: Record<string, unknown>, indent = "  "): string {
-  const properties = (schema.properties as Record<string, Record<string, unknown>>) ?? {};
+type Schema = Record<string, unknown>;
+
+/** Nested objects deeper than this render as `object`, so one odd schema can't flood the prompt. */
+const MAX_DEPTH = 4;
+
+/** The tool's parameters as a TypeScript-like interface body. Everything the model must respect to
+ * pass validation is shown: allowed values, item types, nested objects and their required keys,
+ * and patterns, formats and limits as comments. */
+function renderSchemaAsPseudoType(schema: Schema, indent = "  ", depth = 0): string {
+  const properties = (schema.properties as Record<string, Schema>) ?? {};
   const required = new Set((schema.required as string[]) ?? []);
   const lines = Object.entries(properties).map(([key, prop]) => {
     const optional = required.has(key) ? "" : "?";
-    const type = renderPropertyType(prop);
-    const description = typeof prop.description === "string" ? ` // ${prop.description}` : "";
-    return `${indent}${key}${optional}: ${type};${description}`;
+    const type = renderPropertyType(prop, indent, depth);
+    const notes = [
+      typeof prop.description === "string" ? prop.description : "",
+      ...constraintNotes(prop),
+    ]
+      .filter((n) => n !== "")
+      .join("; ");
+    return `${indent}${key}${optional}: ${type};${notes ? ` // ${notes}` : ""}`;
   });
   return lines.join("\n");
 }
 
-function renderPropertyType(prop: Record<string, unknown>): string {
+function renderPropertyType(prop: Schema, indent: string, depth: number): string {
+  if (Array.isArray(prop.enum)) return prop.enum.map((v) => JSON.stringify(v)).join(" | ");
+  if ("const" in prop) return JSON.stringify(prop.const);
+  const variants = (prop.anyOf ?? prop.oneOf) as Schema[] | undefined;
+  if (Array.isArray(variants))
+    return variants.map((v) => renderPropertyType(v, indent, depth)).join(" | ");
+  if (Array.isArray(prop.type))
+    return prop.type
+      .map((t) => renderPropertyType({ ...prop, type: t }, indent, depth))
+      .join(" | ");
   switch (prop.type) {
     case "string":
       return "string";
-    case "number":
     case "integer":
+      return "integer";
+    case "number":
       return "number";
     case "boolean":
       return "boolean";
-    case "array":
-      return "unknown[]";
-    case "object":
+    case "null":
+      return "null";
+    case "array": {
+      if (!prop.items || typeof prop.items !== "object") return "unknown[]";
+      const item = renderPropertyType(prop.items as Schema, indent, depth);
+      return item.includes("|") ? `(${item})[]` : `${item}[]`;
+    }
+    case "object": {
+      if (prop.properties && depth < MAX_DEPTH) {
+        return `{\n${renderSchemaAsPseudoType(prop, `${indent}  `, depth + 1)}\n${indent}}`;
+      }
+      const extra = prop.additionalProperties;
+      if (extra && typeof extra === "object" && depth < MAX_DEPTH)
+        return `Record<string, ${renderPropertyType(extra as Schema, indent, depth + 1)}>`;
       return "object";
+    }
     default:
       return "unknown";
   }
+}
+
+function constraintNotes(prop: Schema): string[] {
+  const notes: string[] = [];
+  if (typeof prop.pattern === "string") notes.push(`must match /${prop.pattern}/`);
+  if (typeof prop.format === "string") notes.push(`format: ${prop.format}`);
+  if (typeof prop.minimum === "number") notes.push(`minimum ${prop.minimum}`);
+  if (typeof prop.exclusiveMinimum === "number")
+    notes.push(`greater than ${prop.exclusiveMinimum}`);
+  if (typeof prop.maximum === "number") notes.push(`maximum ${prop.maximum}`);
+  if (typeof prop.exclusiveMaximum === "number") notes.push(`less than ${prop.exclusiveMaximum}`);
+  if (typeof prop.minLength === "number") notes.push(`at least ${prop.minLength} characters`);
+  if (typeof prop.maxLength === "number") notes.push(`at most ${prop.maxLength} characters`);
+  if (typeof prop.minItems === "number") notes.push(`at least ${prop.minItems} items`);
+  if (typeof prop.maxItems === "number") notes.push(`at most ${prop.maxItems} items`);
+  if (prop.default !== undefined) notes.push(`default ${JSON.stringify(prop.default)}`);
+  return notes;
 }
 
 function renderToolDoc(tool: ToolDefinition): string {
@@ -145,10 +197,39 @@ function describePlatform(): string {
 }
 
 function buildExampleArgs(tool: ToolDefinition): Record<string, unknown> {
-  const properties = (tool.inputSchema.properties as Record<string, Record<string, unknown>>) ?? {};
+  return exampleObject(tool.inputSchema, 0);
+}
+
+function exampleObject(schema: Schema, depth: number): Record<string, unknown> {
+  const properties = (schema.properties as Record<string, Schema>) ?? {};
   const example: Record<string, unknown> = {};
-  for (const [key, prop] of Object.entries(properties)) {
-    example[key] = prop.type === "string" ? "example" : prop.type === "number" ? 1 : true;
-  }
+  for (const [key, prop] of Object.entries(properties)) example[key] = exampleValue(prop, depth);
   return example;
+}
+
+/** A value that passes the property's schema where that's easy to know, so the example never
+ * shows the model something validation would refuse. */
+function exampleValue(prop: Schema, depth: number): unknown {
+  if (Array.isArray(prop.enum) && prop.enum.length > 0) return prop.enum[0];
+  if ("const" in prop) return prop.const;
+  const variants = (prop.anyOf ?? prop.oneOf) as Schema[] | undefined;
+  if (Array.isArray(variants) && variants[0]) return exampleValue(variants[0], depth);
+  const type = Array.isArray(prop.type) ? prop.type.find((t) => t !== "null") : prop.type;
+  switch (type) {
+    case "string":
+      return "example";
+    case "integer":
+    case "number":
+      return typeof prop.minimum === "number" ? prop.minimum : 1;
+    case "boolean":
+      return true;
+    case "array":
+      return prop.items && typeof prop.items === "object" && depth < MAX_DEPTH
+        ? [exampleValue(prop.items as Schema, depth + 1)]
+        : [];
+    case "object":
+      return depth < MAX_DEPTH ? exampleObject(prop, depth + 1) : {};
+    default:
+      return "example";
+  }
 }

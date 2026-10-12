@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAnthropicRequest } from "./anthropic.js";
+import { buildAnthropicRequest, defaultMaxOutputTokens } from "./anthropic.js";
 import type { ChatRequest } from "./types.js";
 
 const baseRequest: ChatRequest = {
@@ -63,6 +63,17 @@ describe("buildAnthropicRequest", () => {
     expect(body.model).toBe("claude-sonnet-5");
     expect(body.temperature).toBe(0.3);
     expect(body.max_tokens).toBe(200);
-    expect(buildAnthropicRequest(baseRequest).max_tokens).toBe(4096);
+    expect(buildAnthropicRequest(baseRequest).max_tokens).toBe(
+      defaultMaxOutputTokens(baseRequest.model),
+    );
+  });
+});
+
+describe("defaultMaxOutputTokens", () => {
+  it("leaves room for a large file on current models, and keeps older models' own maximum", () => {
+    expect(defaultMaxOutputTokens("claude-sonnet-4-6")).toBe(16_384);
+    expect(defaultMaxOutputTokens("claude-haiku-4-5")).toBe(16_384);
+    expect(defaultMaxOutputTokens("claude-3-5-haiku-20241022")).toBe(8192);
+    expect(defaultMaxOutputTokens("claude-3-haiku-20240307")).toBe(4096);
   });
 });

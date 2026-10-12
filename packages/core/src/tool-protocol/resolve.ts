@@ -236,6 +236,13 @@ function extractBySchema(body: string, schema: JsonSchema): Record<string, unkno
       // drop the closing quote and any `,` `}` `{` boundary noise before the next marker
       value = value.replace(/(["'`])[\s,{}]*$/, "");
     } else {
+      // An object or array parameter runs to its matching bracket: trimming boundary braces
+      // would cut its own closing one.
+      const nested = expectsStructure(props[cur.name]) ? balancedJson(value) : undefined;
+      if (nested !== undefined) {
+        out[cur.name] = nested;
+        continue;
+      }
       // bare (non-string) value: number / boolean / null
       value = value.replace(/[\s,{}]*$/, "");
       try {
@@ -249,6 +256,65 @@ function extractBySchema(body: string, schema: JsonSchema): Record<string, unkno
   }
 
   return hasAllRequired(schema, out) ? out : null;
+}
+
+/** The object or array at the start of `text` (after whitespace), parsed, up to its matching
+ * bracket; undefined when there isn't one or it isn't valid JSON. */
+function balancedJson(text: string): unknown {
+  const start = text.search(/\S/);
+  const open = text[start];
+  if (open !== "{" && open !== "[") return undefined;
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(text.slice(start, i + 1));
+        } catch {
+          return undefined;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+function expectsStructure(prop: unknown): boolean {
+  const type = isPlainObject(prop) ? prop.type : undefined;
+  return type === "object" || type === "array";
+}
+
+/** An object or list parameter sent as a JSON string (`"payload": "{\"queue\": ...}"`, or a
+ * value a loose repair kept as text) becomes the object or list. Only where the schema expects
+ * one: a string parameter whose text happens to be JSON, like a package.json's content for
+ * write_file, stays text. Returns `input` itself when nothing changed. */
+function parseStructuredStrings(input: unknown, schema: JsonSchema): unknown {
+  const props = isPlainObject(schema.properties) ? schema.properties : undefined;
+  if (!props || !isPlainObject(input)) return input;
+  let out: Record<string, unknown> | null = null;
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value !== "string" || !expectsStructure(props[key]) || !/^\s*[[{]/.test(value)) {
+      continue;
+    }
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (parsed !== null && typeof parsed === "object") {
+        out ??= { ...input };
+        out[key] = parsed;
+      }
+    } catch {
+      // not JSON: validation reports it
+    }
+  }
+  return out ?? input;
 }
 
 function resolveXmlEnvelope(
@@ -273,10 +339,15 @@ function resolveXmlEnvelope(
     // some models redundantly restate the name inside the JSON body - prefer the
     // attribute if present, otherwise fall back to a name found inside the body.
     const nameFromBody = !declaredName;
-    if (!declaredName) {
-      declaredName = firstStringField(repaired.value, NAME_ALIASES);
-    }
-    input = stripAliasKeys(repaired.value, [...NAME_ALIASES]);
+    const nameKey = nameFromBody ? firstStringKey(repaired.value, NAME_ALIASES) : null;
+    if (nameKey) declaredName = repaired.value[nameKey] as string;
+    // A restated name is dropped, but a tool's own parameter called "name" (or "tool"...) is an
+    // argument: keep it, unless it's where this call's tool name was just read from.
+    const params = parameterNames(declaredName, registry);
+    input = stripAliasKeys(
+      repaired.value,
+      NAME_ALIASES.filter((k) => k === nameKey || !params.has(k)),
+    );
     // {"name": "bash", "args": {...}} - the arguments sit one level down.
     if (nameFromBody && declaredName && isPlainObject(input)) {
       const nested = firstObjectField(input, ARGS_ALIASES);
@@ -395,22 +466,23 @@ export function finalize(
     };
   }
 
-  const validation = validateAgainstSchema(tool.inputSchema, input);
+  const args = parseStructuredStrings(input, tool.inputSchema);
+  const validation = validateAgainstSchema(tool.inputSchema, args);
   if (!validation.ok) {
     return {
       raw: source.raw,
       attemptedName: tool.name,
-      message: `Arguments for "${tool.name}" failed validation: ${validation.errors.join("; ")}${missingEveryRequiredKeyHint(tool.inputSchema, input)}`,
+      message: `Arguments for "${tool.name}" failed validation: ${validation.errors.join("; ")}${missingEveryRequiredKeyHint(tool.inputSchema, args)}`,
     };
   }
 
   return {
     id: crypto.randomUUID(),
     name: tool.name,
-    input,
+    input: args,
     raw: source.raw,
     ...(correctedFrom ? { correctedFromName: correctedFrom } : {}),
-    ...(repaired || correctedFrom ? { repaired: true } : {}),
+    ...(repaired || correctedFrom || args !== input ? { repaired: true } : {}),
     ...(strategy ? { strategy } : {}),
   };
 }
@@ -454,6 +526,17 @@ function missingEveryRequiredKeyHint(schema: JsonSchema, input: unknown): string
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function firstStringKey(obj: Record<string, unknown>, keys: string[]): string | null {
+  return (
+    keys.find((key) => typeof obj[key] === "string" && (obj[key] as string).length > 0) ?? null
+  );
+}
+
+function parameterNames(name: string | null, registry: ToolRegistry): Set<string> {
+  const tool = name ? resolveToolName(name, registry).tool : undefined;
+  return new Set(Object.keys((tool?.inputSchema.properties as Record<string, unknown>) ?? {}));
 }
 
 function firstStringField(obj: Record<string, unknown>, keys: string[]): string | null {

@@ -529,3 +529,102 @@ describe("resolveEnvelope - a bare string body (captured live on Devstral)", () 
     expect("message" in r).toBe(true);
   });
 });
+
+describe("resolveEnvelope - a tool with its own name parameter", () => {
+  function scheduleRegistry(): ToolRegistry {
+    const registry = buildRegistry();
+    registry.register({
+      name: "schedule_job",
+      description: "Schedule a recurring job.",
+      permission: "write",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          cron: { type: "string" },
+          payload: {
+            type: "object",
+            properties: { queue: { type: "string" }, retries: { type: "integer" } },
+            required: ["queue"],
+          },
+        },
+        required: ["name", "cron", "payload"],
+      },
+      async execute() {
+        return textResult("scheduled");
+      },
+    });
+    return registry;
+  }
+
+  it("keeps the name argument when the tag names the tool", () => {
+    const body = '{"name": "daily_backup", "cron": "0 2 * * *", "payload": {"queue": "backups"}}';
+    const result = resolveEnvelope(xmlEnvelope("schedule_job", body), scheduleRegistry());
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.input).toEqual({
+        name: "daily_backup",
+        cron: "0 2 * * *",
+        payload: { queue: "backups" },
+      });
+      expect(result.repaired).toBeFalsy();
+    }
+  });
+
+  it("still drops a name restated in the body, when it names the tool", () => {
+    const result = resolveEnvelope(
+      xmlEnvelope(null, '{"name": "read_file", "path": "a.ts"}'),
+      scheduleRegistry(),
+    );
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.name).toBe("read_file");
+      expect(result.input).toEqual({ path: "a.ts" });
+    }
+  });
+
+  it("reads an object parameter sent as a JSON string as the object, and flags the repair", () => {
+    const body = '{"name": "n", "cron": "0 2 * * *", "payload": "{\\"queue\\": \\"backups\\"}"}';
+    const result = resolveEnvelope(xmlEnvelope("schedule_job", body), scheduleRegistry());
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.input).toEqual({ name: "n", cron: "0 2 * * *", payload: { queue: "backups" } });
+      expect(result.repaired).toBe(true);
+    }
+  });
+
+  it("keeps a string parameter whose text is JSON as text", () => {
+    const body = JSON.stringify({
+      path: "package.json",
+      old_string: '{"version": "1.0.0"}',
+      new_string: '{"version": "1.1.0"}',
+    });
+    const result = resolveEnvelope(xmlEnvelope("edit_file", body), scheduleRegistry());
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.input).toEqual({
+        path: "package.json",
+        old_string: '{"version": "1.0.0"}',
+        new_string: '{"version": "1.1.0"}',
+      });
+      expect(result.repaired).toBeFalsy();
+    }
+  });
+
+  it("reads a nested object whole when it pulls arguments out by parameter name", () => {
+    const body =
+      '\n"name": "nightly",\n"cron": "0 2 * * *",\n"payload": {"queue": "backups", "retries": 2}\n</schedule_job>';
+    const result = resolveEnvelope(
+      { variant: "xml", declaredName: "schedule_job", body, raw: "" },
+      scheduleRegistry(),
+    );
+    expect("message" in result).toBe(false);
+    if (!("message" in result)) {
+      expect(result.input).toEqual({
+        name: "nightly",
+        cron: "0 2 * * *",
+        payload: { queue: "backups", retries: 2 },
+      });
+    }
+  });
+});

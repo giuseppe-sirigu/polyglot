@@ -74,6 +74,72 @@ const EMPTY_REPLY_NUDGE =
   "Your last reply was empty. Continue the task: call the next tool you need, or, if the task " +
   "is complete, reply with a short summary of what you did.";
 
+/** How many replies cut off by the output length limit one user turn may be nudged past. */
+const MAX_LENGTH_NUDGES = 2;
+/** Sent after a reply the server cut off at its output limit with no complete tool call: an
+ * answer stopped mid-sentence, or, on reasoning models, nothing visible at all because the
+ * reasoning used up the limit. */
+const LENGTH_NUDGE =
+  "Your reply was cut off at the output length limit. Continue from where it stopped; if you " +
+  "were reasoning at length, keep it short and make the next tool call.";
+/** Replaces a tool call cut off by the output limit. Its arguments are incomplete, and repairing
+ * them would close the open string and run the call: write_file would write a truncated file. */
+const CUT_OFF_CALL =
+  "Your reply reached the output length limit in the middle of this tool call, so it was not " +
+  "run: its arguments were cut off. Make the call again in smaller pieces, for example by " +
+  "writing a large file in parts.";
+
+/** Whether a call's arguments could have been cut off: they didn't parse as complete JSON. */
+function mayBeCutOff(resolved: ParsedToolCall | ToolCallParseError): boolean {
+  if ("message" in resolved) return true;
+  return (
+    resolved.repaired === true &&
+    resolved.strategy !== "clean" &&
+    resolved.strategy !== "wrapper_stripped"
+  );
+}
+
+/** At the output limit, the reply's last call is the one the limit may have cut: it runs only
+ * if its arguments parsed as complete JSON. */
+function refuseCutOffCall(
+  resolutions: (ParsedToolCall | ToolCallParseError)[],
+  raws: string[],
+  names: (string | null)[],
+): (ParsedToolCall | ToolCallParseError)[] {
+  const last = resolutions.length - 1;
+  const lastResolution = resolutions[last];
+  if (!lastResolution || !mayBeCutOff(lastResolution)) return resolutions;
+  return [
+    ...resolutions.slice(0, last),
+    { raw: raws[last] ?? "", attemptedName: names[last] ?? null, message: CUT_OFF_CALL },
+  ];
+}
+
+/** How many replies that announce a next step without taking it one user turn may be nudged past. */
+const MAX_INTENT_NUDGES = 2;
+/** Sent after such a reply. Seen live on qwen3-coder 30B: "Let me start by examining the current
+ * files." and then the turn ends with no tool call, which used to read as "done". */
+const INTENT_NUDGE =
+  "You said what you'd do next but didn't make the tool call, so nothing happened. Make the call " +
+  "now. If the task is already complete, reply with a short summary instead.";
+
+/** Whether a reply with no tool call ends by announcing an action ("Let me read the file.") rather
+ * than finishing or asking the user something. Only the last paragraph counts: a summary that
+ * mentions earlier steps ("I'll note that I renamed...") usually ends differently. */
+export function announcesNextStep(text: string): boolean {
+  const paragraphs = text
+    .trim()
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter((p) => p !== "");
+  const last = paragraphs[paragraphs.length - 1] ?? "";
+  if (last === "" || /\?\s*$/.test(last)) return false;
+  if (/\blet me know\b|\bfeel free\b|\bi'?ll be (happy|glad)\b/i.test(last)) return false;
+  return /\b(let me|let's|let us|i'll|i will|i'm going to|i am going to|i need to|next,? i)\b/i.test(
+    last,
+  );
+}
+
 async function pushMessage(
   session: Session,
   role: Message["role"],
@@ -126,6 +192,8 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
   let consecutiveParseFailures = 0;
   let subAgentSpawns = 0;
   let emptyReplyNudges = 0;
+  let intentNudges = 0;
+  let lengthNudges = 0;
 
   // Which model is actually running this turn. Starts as the caller's; a failover swaps the
   // adapter + system prompt here and rewrites `session.model` / `session.provider` (sticky) so
@@ -257,6 +325,14 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
 
     if (structured) {
       const parsed = parseStructuredEnvelope(fullText);
+      if (!parsed.ok && stopReason === "max_tokens" && lengthNudges < MAX_LENGTH_NUDGES) {
+        // Cut off, not malformed: the JSON envelope never got to close.
+        onEvent({ type: "turn_end", stopReason });
+        lengthNudges += 1;
+        onEvent({ type: "length_nudged", attempt: lengthNudges });
+        await pushMessage(session, "user", LENGTH_NUDGE, onMessage);
+        continue;
+      }
       if (!parsed.ok) {
         onEvent({ type: "turn_end", stopReason });
         // Try a failover model before giving up (fullText isn't in history yet, so the malformed
@@ -287,7 +363,14 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     } else {
       const envelopes = extractEnvelopes(fullText, tools.names());
       resolutions = envelopes.map((envelope) => resolveEnvelope(envelope, tools));
-      if (resolutions.length === 0) {
+      if (stopReason === "max_tokens") {
+        resolutions = refuseCutOffCall(
+          resolutions,
+          envelopes.map((e) => e.raw),
+          envelopes.map((e) => e.declaredName),
+        );
+      }
+      if (resolutions.length === 0 && stopReason !== "max_tokens") {
         const trailing = resolveTrailingArguments(fullText, tools);
         if (trailing) resolutions = [trailing];
       }
@@ -300,6 +383,20 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
     // bug: on a later turn the model had no memory of e.g. its own already-approved plan call,
     // and (correctly, given what it could see) concluded nothing had been approved yet.
     await pushMessage(session, "assistant", fullText, onMessage);
+
+    if (
+      resolutions.length === 0 &&
+      stopReason === "max_tokens" &&
+      lengthNudges < MAX_LENGTH_NUDGES
+    ) {
+      // Cut off before any call: ask for the rest. An empty reply (reasoning used up the limit)
+      // is dropped from history, as below.
+      lengthNudges += 1;
+      if (fullText.trim() === "") session.messages.pop();
+      onEvent({ type: "length_nudged", attempt: lengthNudges });
+      await pushMessage(session, "user", LENGTH_NUDGE, onMessage);
+      continue;
+    }
 
     if (
       resolutions.length === 0 &&
@@ -327,6 +424,19 @@ export async function runAgentTurn(opts: RunAgentTurnOptions): Promise<void> {
         }
         onEvent({ type: "agent_stop", reason: "unreliable_model" });
         return;
+      }
+      // "Let me read the file." with no call isn't a finished answer either. The reply stays in
+      // history, so the model sees what it said it would do.
+      if (
+        !structured &&
+        stopReason === "end_turn" &&
+        intentNudges < MAX_INTENT_NUDGES &&
+        announcesNextStep(fullText)
+      ) {
+        intentNudges += 1;
+        onEvent({ type: "intent_nudged", attempt: intentNudges });
+        await pushMessage(session, "user", INTENT_NUDGE, onMessage);
+        continue;
       }
       onEvent({ type: "agent_stop", reason: "done" });
       return;
