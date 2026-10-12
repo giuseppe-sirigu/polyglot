@@ -43,3 +43,49 @@ describe("buildToolSystemPrompt", () => {
     expect(buildToolSystemPrompt(tools, "/repo", "manual")).not.toContain("PLAN MODE");
   });
 });
+
+describe("buildToolSystemPrompt - the tool's full schema", () => {
+  const job: ToolDefinition = {
+    ...tool("schedule_job"),
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", pattern: "^[a-z_]+$" },
+        priority: { type: "string", enum: ["low", "high"] },
+        retries: { type: "integer", minimum: 0, maximum: 5 },
+        tags: { type: "array", items: { type: "string" }, maxItems: 3 },
+        payload: {
+          type: "object",
+          properties: {
+            queue: { type: "string", description: "Queue name" },
+            delay: { type: ["integer", "null"] },
+          },
+          required: ["queue"],
+        },
+        headers: { type: "object", additionalProperties: { type: "string" } },
+      },
+      required: ["name", "priority", "payload"],
+    },
+  };
+  const prompt = buildToolSystemPrompt([job], "/repo");
+
+  it("shows allowed values, item types, nested objects and limits", () => {
+    expect(prompt).toContain("  name: string; // must match /^[a-z_]+$/");
+    expect(prompt).toContain('  priority: "low" | "high";');
+    expect(prompt).toContain("  retries?: integer; // minimum 0; maximum 5");
+    expect(prompt).toContain("  tags?: string[]; // at most 3 items");
+    expect(prompt).toContain(
+      "  payload: {\n    queue: string; // Queue name\n    delay?: integer | null;\n  };",
+    );
+    expect(prompt).toContain("  headers?: Record<string, string>;");
+  });
+
+  it("gives an example call that fits the schema", () => {
+    const example = prompt.slice(prompt.indexOf('<tool_call name="schedule_job">'));
+    const args = JSON.parse(example.split("\n")[1] ?? "{}") as Record<string, unknown>;
+    expect(args.priority).toBe("low");
+    expect(args.retries).toBe(0);
+    expect(args.tags).toEqual(["example"]);
+    expect(args.payload).toEqual({ queue: "example", delay: 1 });
+  });
+});

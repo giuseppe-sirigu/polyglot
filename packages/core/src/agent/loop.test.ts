@@ -4,7 +4,7 @@ import type { ChatRequest, ProviderAdapter, ProviderStreamEvent } from "../provi
 import { type Session, createSession } from "../session/types.js";
 import { type ToolDefinition, ToolRegistry, textResult } from "../tools/types.js";
 import type { AgentEvent } from "./events.js";
-import { runAgentTurn } from "./loop.js";
+import { announcesNextStep, runAgentTurn } from "./loop.js";
 
 /** A ProviderAdapter whose chat() replays one scripted full-text completion per call, as a
  * single text_delta followed by message_stop - enough to drive runAgentTurn's structured-mode
@@ -51,18 +51,25 @@ function buildRegistry(): ToolRegistry {
 
 /** Free-text (non-structured) counterpart of fakeStructuredAdapter - replays each response as
  * one text_delta so the loop's <tool_call> stream-parser / repair path runs. */
-function fakeFreeTextAdapter(responses: string[]): ProviderAdapter {
+function fakeFreeTextAdapter(responses: (string | CutOff)[]): ProviderAdapter {
   let i = 0;
   return {
     id: "fake-free",
     capabilities: { nativeToolCalling: "none", maxContextTokens: 100_000, structuredOutput: false },
     async *chat(): AsyncIterable<ProviderStreamEvent> {
-      const text = responses[i++];
-      if (text === undefined) throw new Error("fakeFreeTextAdapter: ran out of scripted responses");
-      yield { type: "text_delta", delta: text };
-      yield { type: "message_stop", stopReason: "end_turn" };
+      const response = responses[i++];
+      if (response === undefined)
+        throw new Error("fakeFreeTextAdapter: ran out of scripted responses");
+      const cutOff = typeof response !== "string";
+      yield { type: "text_delta", delta: cutOff ? response.cutOff : response };
+      yield { type: "message_stop", stopReason: cutOff ? "max_tokens" : "end_turn" };
     },
   };
+}
+
+/** A response the server stopped at its output length limit. */
+interface CutOff {
+  cutOff: string;
 }
 
 const denyAllGate = {
@@ -397,6 +404,167 @@ describe("runAgentTurn empty-reply recovery (free-text mode)", () => {
     const { events } = await run(adapter, buildRegistry());
 
     expect(events.some((e) => e.type === "empty_reply_nudged")).toBe(false);
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
+  });
+});
+
+describe("runAgentTurn announced-but-not-taken recovery (free-text mode)", () => {
+  const READ_CALL = '<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_call>';
+
+  it("asks for the call when a reply announces a step and stops (seen live on qwen3-coder)", async () => {
+    const adapter = fakeFreeTextAdapter([
+      "I'll rename the function. Let me start by examining the current files.",
+      READ_CALL,
+      "Renamed add to sum.",
+    ]);
+
+    const { events, session } = await run(adapter, buildRegistry());
+
+    expect(events.filter((e) => e.type === "intent_nudged")).toEqual([
+      { type: "intent_nudged", attempt: 1 },
+    ]);
+    expect(events.some((e) => e.type === "tool_result")).toBe(true);
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
+    // The announcing reply stays in history, followed by the nudge.
+    expect(session.messages.some((m) => m.content.startsWith("You said what you'd do next"))).toBe(
+      true,
+    );
+  });
+
+  it("stops as done after the nudge budget is spent", async () => {
+    const adapter = fakeFreeTextAdapter(["Let me check.", "Let me check.", "Let me check."]);
+
+    const { events } = await run(adapter, buildRegistry());
+
+    expect(events.filter((e) => e.type === "intent_nudged")).toHaveLength(2);
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
+  });
+
+  it("does not nudge a finished answer", async () => {
+    const adapter = fakeFreeTextAdapter(["Renamed add to sum and ran main.mjs: it prints 3."]);
+
+    const { events } = await run(adapter, buildRegistry());
+
+    expect(events.some((e) => e.type === "intent_nudged")).toBe(false);
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
+  });
+});
+
+describe("announcesNextStep", () => {
+  it.each([
+    "Let me first check what files exist in the current directory.",
+    "I need to:\n1. Find math.mjs\n2. Update main.mjs\n\nLet me start by looking for these files.",
+    "I'll help you find and fix the bug. First, let me examine the file.",
+    "Now I'm going to run the tests.",
+    "Next, I will update main.mjs:",
+  ])("is true for %j", (text) => {
+    expect(announcesNextStep(text)).toBe(true);
+  });
+
+  it.each([
+    "Renamed add to sum; main.mjs prints 3.",
+    "Done. Let me know if you want anything else.",
+    "Should I also update the tests?",
+    "Let me know which file you mean.",
+    "I'll be happy to help with anything else.",
+    "I'll start with the parser.\n\nAll three files are updated and the tests pass.",
+    "",
+  ])("is false for %j", (text) => {
+    expect(announcesNextStep(text)).toBe(false);
+  });
+});
+
+describe("runAgentTurn at the output length limit (free-text mode)", () => {
+  function writeRegistry(written: unknown[]): ToolRegistry {
+    const registry = buildRegistry();
+    registry.register({
+      name: "write_file",
+      description: "Write a file.",
+      permission: "write",
+      inputSchema: {
+        type: "object",
+        properties: { path: { type: "string" }, content: { type: "string" } },
+        required: ["path", "content"],
+      },
+      async execute(input) {
+        written.push(input);
+        return textResult("written");
+      },
+    });
+    return registry;
+  }
+
+  it("never runs a tool call the limit cut off, and says why", async () => {
+    const written: unknown[] = [];
+    const adapter = fakeFreeTextAdapter([
+      {
+        cutOff:
+          '<tool_call name="write_file">\n{"path": "a.mjs", "content": "export const a = 1;\\nexport const b',
+      },
+      '<tool_call name="write_file">\n{"path": "a.mjs", "content": "export const a = 1;"}\n</tool_call>',
+      "Wrote a.mjs.",
+    ]);
+
+    const { events } = await run(adapter, writeRegistry(written));
+
+    expect(written).toEqual([{ path: "a.mjs", content: "export const a = 1;" }]);
+    const parseError = events.find((e) => e.type === "tool_parse_error");
+    expect(parseError && "message" in parseError ? parseError.message : "").toMatch(
+      /output length limit/,
+    );
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
+  });
+
+  it("still runs a complete call made before the limit", async () => {
+    const adapter = fakeFreeTextAdapter([
+      {
+        cutOff: '<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_call>\nNext I will look at',
+      },
+      "a.ts is fine.",
+    ]);
+
+    const { events } = await run(adapter, buildRegistry());
+
+    expect(events.some((e) => e.type === "tool_result")).toBe(true);
+    expect(events.some((e) => e.type === "tool_parse_error")).toBe(false);
+  });
+
+  it("asks for the rest of an answer cut off mid-sentence", async () => {
+    const adapter = fakeFreeTextAdapter([
+      { cutOff: "The bug is in sum.mjs: the loop starts" },
+      "at 1 instead of 0.",
+    ]);
+
+    const { events, session } = await run(adapter, buildRegistry());
+
+    expect(events.filter((e) => e.type === "length_nudged")).toEqual([
+      { type: "length_nudged", attempt: 1 },
+    ]);
+    expect(session.messages.some((m) => m.content.startsWith("Your reply was cut off"))).toBe(true);
+    expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
+  });
+
+  it("treats an empty reply at the limit (reasoning used it up) as cut off, not empty", async () => {
+    const adapter = fakeFreeTextAdapter([
+      { cutOff: "" },
+      '<tool_call name="read_file">\n{"path": "a.ts"}\n</tool_call>',
+      "Done.",
+    ]);
+
+    const { events, session } = await run(adapter, buildRegistry());
+
+    expect(events.filter((e) => e.type === "length_nudged")).toHaveLength(1);
+    expect(events.some((e) => e.type === "empty_reply_nudged")).toBe(false);
+    expect(session.messages.some((m) => m.role === "assistant" && m.content === "")).toBe(false);
+    expect(events.some((e) => e.type === "tool_result")).toBe(true);
+  });
+
+  it("stops as done after the nudge budget is spent", async () => {
+    const adapter = fakeFreeTextAdapter([{ cutOff: "a" }, { cutOff: "b" }, { cutOff: "c" }]);
+
+    const { events } = await run(adapter, buildRegistry());
+
+    expect(events.filter((e) => e.type === "length_nudged")).toHaveLength(2);
     expect(lastStop(events)).toEqual({ type: "agent_stop", reason: "done" });
   });
 });

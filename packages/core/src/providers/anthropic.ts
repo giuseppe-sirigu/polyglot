@@ -36,10 +36,19 @@ export function buildAnthropicRequest(request: ChatRequest): MessageParams {
       role: m.role === "assistant" ? "assistant" : "user",
       content: m.content,
     })),
-    max_tokens: request.maxOutputTokens ?? 4096,
+    max_tokens: request.maxOutputTokens ?? defaultMaxOutputTokens(request.model),
     temperature: request.temperature,
     stream: true,
   };
+}
+
+/** Output tokens asked for when the caller sets none. Room for a large file in one write_file call:
+ * at 4,096 those were often cut off by the limit. Claude 3 and 3.5 models refuse a request above
+ * their own maximum instead of capping it, so they keep theirs. */
+export function defaultMaxOutputTokens(model: string): number {
+  if (/^claude-3-(haiku|sonnet|opus)/.test(model)) return 4096;
+  if (/^claude-3-5-/.test(model)) return 8192;
+  return 16_384;
 }
 
 export class AnthropicAdapter implements ProviderAdapter {

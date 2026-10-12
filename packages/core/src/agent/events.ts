@@ -62,6 +62,12 @@ export type AgentEvent =
   // Emitted when the model returned nothing (no text, no tool call) and was asked to continue
   // instead of the empty reply ending the turn. `attempt` counts nudges within this user turn.
   | { type: "empty_reply_nudged"; attempt: number }
+  // Emitted when the model's reply announced a next step ("Let me read the file.") but made no
+  // tool call, and it was asked to make the call. `attempt` counts nudges within this user turn.
+  | { type: "intent_nudged"; attempt: number }
+  // Emitted when the server cut the model's reply off at its output length limit before a
+  // complete tool call, and the model was asked to continue. `attempt` counts within this user turn.
+  | { type: "length_nudged"; attempt: number }
   /** The server read far less of the prompt than it was sent: its context window is probably
    * truncating it (see providers/context-window.ts). Sent once per run. */
   | { type: "context_truncated"; estimatedTokens: number; reportedTokens: number }
