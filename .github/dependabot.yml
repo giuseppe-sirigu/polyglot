@@ -11,6 +11,11 @@ updates:
         # as their own PRs instead of blocking the routine bumps in this group.
         update-types: ["minor", "patch"]
     open-pull-requests-limit: 10
+    # Only versions at least 7 days old, matching the Gateway's pnpm minimumReleaseAge: a core
+    # release can then never require a dependency the Gateway refuses to install yet. Security
+    # updates ignore the cooldown.
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "github-actions"
     directory: "/"
