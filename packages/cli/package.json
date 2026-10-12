@@ -42,7 +42,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/diff": "^6.0.0",
+    "@types/diff": "^8.0.0",
     "@types/react": "^19.3.0",
     "@usepolyglot/core": "workspace:*",
     "esbuild": "^0.28.2",
